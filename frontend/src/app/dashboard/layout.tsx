@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Building2, Ticket, Menu, X, LogOut, Bell, Search, Users, Settings, Hotel, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Building2, Ticket, Menu, X, LogOut, Bell, Search, Users, Settings, Hotel, MessageSquare, UtensilsCrossed, Receipt, UserCheck, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,11 @@ export default function DashboardLayout({
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Rooms', href: '/dashboard/rooms', icon: Building2 },
+    { name: 'Guests', href: '/dashboard/guests', icon: UserCheck },
+    { name: 'Guest History', href: '/dashboard/guest-history', icon: History },
+    { name: 'Food Menu', href: '/dashboard/food', icon: UtensilsCrossed },
+    { name: 'Orders', href: '/dashboard/orders', icon: Receipt },
+    { name: 'Bills', href: '/dashboard/bills', icon: Receipt },
     { name: 'Service Requests', href: '/dashboard/tickets', icon: Ticket },
   ];
 
@@ -133,6 +138,11 @@ export default function DashboardLayout({
             <h1 className="text-lg font-semibold">
               {navItems.find((item) => item.href === pathname)?.name || 
                (pathname.startsWith('/dashboard/rooms') ? 'Rooms' : 
+                pathname.startsWith('/dashboard/guests') && !pathname.startsWith('/dashboard/guest-history') ? 'Guests' :
+                pathname.startsWith('/dashboard/guest-history') ? 'Guest History' :
+                pathname.startsWith('/dashboard/food') ? 'Food Menu' :
+                pathname.startsWith('/dashboard/orders') ? 'Orders' :
+                pathname.startsWith('/dashboard/bills') ? 'Bills' :
                 pathname.startsWith('/dashboard/tickets') ? 'Service Requests' : 'Dashboard')}
             </h1>
             

@@ -52,7 +52,6 @@ exports.createTicket = [
       const ticketData = {
         room: roomId,
         roomNumber: room.number, // Get room number from the found room
-        manager: room.manager,   // Get manager from the room
         guestInfo: {
           name: guestName,
           contact: guestContact || 'Not provided',
@@ -122,8 +121,8 @@ exports.getTickets = async (req, res, next) => {
       limit = 20
     } = req.query;
 
-    // Build query
-    const query = { manager: req.user.userId };
+    // Build query - remove manager filter for hotel-centric approach
+    const query = {};
     
     if (status) query.status = status;
     if (roomId) query.room = roomId;
@@ -170,8 +169,7 @@ exports.getTickets = async (req, res, next) => {
 exports.getTicket = async (req, res, next) => {
   try {
     const ticket = await Ticket.findOne({
-      _id: req.params.id,
-      manager: req.user.userId
+      _id: req.params.id
     }).populate('room', 'number type floor');
 
     if (!ticket) {
@@ -200,8 +198,7 @@ exports.updateTicketStatus = async (req, res, next) => {
     }
 
     let ticket = await Ticket.findOne({
-      _id: req.params.id,
-      manager: req.user.userId
+      _id: req.params.id
     });
 
     if (!ticket) {
@@ -245,8 +242,7 @@ exports.addMessage = async (req, res, next) => {
     }
 
     const ticket = await Ticket.findOne({
-      _id: req.params.id,
-      manager: req.user.userId
+      _id: req.params.id
     });
 
     if (!ticket) {

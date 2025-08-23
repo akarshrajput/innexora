@@ -200,7 +200,6 @@ Current Request: ${initialMessage}`;
       },
       status: 'raised',
       priority: priority,
-      manager: room.manager,
       subject: `Service Request - Room ${roomNumber}`,
       messages: [
         ...formattedConversation,

@@ -19,6 +19,8 @@ interface Room {
   number: string;
   type: string;
   floor: number;
+  price: number;
+  capacity: number;
   status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
   description?: string;
 }
@@ -32,16 +34,41 @@ export default function RoomsPage() {
     number: '',
     type: '',
     floor: 1,
+    price: 0,
+    capacity: 2,
     status: 'available' as Room['status'],
     description: ''
   });
 
   const fetchRooms = async () => {
     try {
+      console.log('Fetching rooms...');
       const response = await apiClient.get('/rooms');
-      // The API returns { success: boolean, count: number, data: Room[] }
+      console.log('Rooms API Response:', response.data);
+      
+      // Handle the expected response format: { success: true, data: Room[], count: number }
       if (response.data && response.data.success && Array.isArray(response.data.data)) {
-        setRooms(response.data.data);
+        const roomsData = response.data.data;
+        console.log('Rooms data:', roomsData);
+        
+        // Transform the data to match our frontend Room interface
+        const processedRooms = roomsData.map((room: any) => ({
+          ...room,
+          id: room._id, // Map _id to id
+          _id: room._id, // Keep _id for backward compatibility
+          // Ensure all required fields have default values if missing
+          number: room.number || '',
+          type: room.type || 'Standard',
+          floor: room.floor || 1,
+          price: room.price || 0,
+          capacity: room.capacity || 2,
+          amenities: Array.isArray(room.amenities) ? room.amenities : [],
+          status: room.status || 'available',
+          description: room.description || ''
+        }));
+        
+        console.log('Processed rooms:', processedRooms);
+        setRooms(processedRooms);
       } else {
         console.error('Unexpected API response format:', response.data);
         setRooms([]);
@@ -76,17 +103,34 @@ export default function RoomsPage() {
     e.preventDefault();
     
     try {
+      // Prepare the room data with proper types
+      const roomData = {
+        ...formData,
+        price: Number(formData.price) || 0,
+        floor: Number(formData.floor) || 1,
+        capacity: Number(formData.capacity) || 2,
+      };
+      
       if (editingRoom) {
-        await apiClient.put(`/rooms/${editingRoom._id}`, formData);
+        await apiClient.put(`/rooms/${editingRoom._id}`, roomData);
         toast.success('Room updated successfully');
       } else {
-        await apiClient.post('/rooms', formData);
+        // For new rooms, the backend will add the manager ID from the auth token
+        await apiClient.post('/rooms', roomData);
         toast.success('Room created successfully');
       }
       
       setIsDialogOpen(false);
       setEditingRoom(null);
-      setFormData({ number: '', type: '', floor: 1, status: 'available', description: '' });
+      setFormData({ 
+        number: '', 
+        type: '', 
+        floor: 1, 
+        price: 0, 
+        capacity: 2, 
+        status: 'available', 
+        description: '' 
+      });
       fetchRooms();
     } catch (error) {
       console.error('Failed to save room:', error);
@@ -100,6 +144,8 @@ export default function RoomsPage() {
       number: room.number,
       type: room.type,
       floor: room.floor,
+      price: room.price || 0,
+      capacity: room.capacity || 2,
       status: room.status,
       description: room.description || ''
     });
@@ -108,7 +154,15 @@ export default function RoomsPage() {
 
   const openCreateDialog = () => {
     setEditingRoom(null);
-    setFormData({ number: '', type: '', floor: 1, status: 'available', description: '' });
+    setFormData({ 
+      number: '', 
+      type: '', 
+      floor: 1, 
+      price: 0, 
+      capacity: 2, 
+      status: 'available', 
+      description: '' 
+    });
     setIsDialogOpen(true);
   };
 
@@ -160,6 +214,8 @@ export default function RoomsPage() {
                 <TableHead>Room Number</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Floor</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Capacity</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -171,6 +227,8 @@ export default function RoomsPage() {
                   <TableCell className="font-medium">{room.number}</TableCell>
                   <TableCell>{room.type}</TableCell>
                   <TableCell>{room.floor}</TableCell>
+                  <TableCell>${room.price?.toFixed(2)}</TableCell>
+                  <TableCell>{room.capacity}</TableCell>
                   <TableCell>
                     <Badge className={getStatusColor(room.status)}>
                       {room.status}
@@ -257,9 +315,35 @@ export default function RoomsPage() {
                 <Input
                   id="floor"
                   type="number"
-                  min="1"
                   value={formData.floor}
-                  onChange={(e) => setFormData({ ...formData, floor: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, floor: parseInt(e.target.value) || 1 })}
+                  min="1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="price">Price per night ($)</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                  min="0"
+                  step="0.01"
+                  placeholder="e.g., 99.99"
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="capacity">Capacity</Label>
+                <Input
+                  id="capacity"
+                  type="number"
+                  value={formData.capacity}
+                  onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 1 })}
+                  min="1"
+                  max="10"
                   required
                 />
               </div>

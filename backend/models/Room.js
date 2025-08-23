@@ -16,15 +16,35 @@ const roomSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'Floor number is required'],
     },
+    price: {
+      type: Number,
+      required: [true, 'Room price is required'],
+      min: [0, 'Price cannot be negative'],
+    },
+    capacity: {
+      type: Number,
+      required: [true, 'Room capacity is required'],
+      min: [1, 'Capacity must be at least 1'],
+      default: 2,
+    },
+    amenities: [{
+      type: String,
+      trim: true,
+    }],
+    description: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Description cannot exceed 500 characters'],
+    },
     status: {
       type: String,
-      enum: ['available', 'occupied', 'maintenance'],
+      enum: ['available', 'occupied', 'maintenance', 'cleaning'],
       default: 'available',
     },
-    manager: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
+    currentGuest: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Guest',
+      default: null,
     },
     isActive: {
       type: Boolean,
@@ -40,7 +60,6 @@ const roomSchema = new mongoose.Schema(
 
 // Indexes for faster queries
 roomSchema.index({ number: 1 }, { unique: true });
-roomSchema.index({ manager: 1 });
 roomSchema.index({ status: 1 });
 
 // Virtual for tickets in this room

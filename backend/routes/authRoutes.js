@@ -1,41 +1,36 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const { 
-  validateRegistration: validateManagerSignup, 
-  validateLogin: validateManagerLogin, 
-  authenticate: authenticateManager,
-  authorizeManager 
-} = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
 // @route   POST /api/auth/register
-// @desc    Register a hotel manager
+// @desc    Register a new user (manager/staff)
 // @access  Public
-router.post('/register', validateManagerSignup, authController.register);
+router.post('/register', authController.register);
 
 // @route   POST /api/auth/login
-// @desc    Authenticate manager & get token
+// @desc    Login user & get token
 // @access  Public
-router.post('/login', validateManagerLogin, authController.login);
-
-// @route   POST /api/auth/logout
-// @desc    Logout manager / clear cookie
-// @access  Private
-router.post('/logout', authenticateManager, authController.logout);
+router.post('/login', authController.login);
 
 // @route   GET /api/auth/me
-// @desc    Get current logged in manager
+// @desc    Get current logged in user
 // @access  Private
-router.get('/me', authenticateManager, authController.getMe);
+router.get('/me', protect, authController.getMe);
 
-// @route   POST /api/auth/forgot-password
+// @route   POST /api/auth/forgotpassword
 // @desc    Forgot password - Send reset password email
 // @access  Public
-router.post('/forgot-password', authController.forgotPassword);
+router.post('/forgotpassword', authController.forgotPassword);
 
-// @route   POST /api/auth/reset-password
+// @route   PUT /api/auth/resetpassword/:resettoken
 // @desc    Reset password
 // @access  Public
-router.post('/reset-password', authController.resetPassword);
+router.put('/resetpassword/:resettoken', authController.resetPassword);
+
+// @route   GET /api/auth/logout
+// @desc    Logout user / clear cookie
+// @access  Private
+router.get('/logout', protect, authController.logout);
 
 module.exports = router;

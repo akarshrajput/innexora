@@ -1,23 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const ticketController = require('../controllers/ticketController');
-const { authenticateManager } = require('../middleware/authMiddleware');
+const chatController = require('../controllers/chatController');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 // Public routes (guest access via room-specific link)
 router.post('/', ticketController.createTicket);
-router.post('/guest', require('../controllers/chatController').createGuestTicket);
+router.post('/guest', chatController.createGuestTicket);
 
-// Protected routes (manager access only)
-router.use(authenticateManager);
+// Protected routes (require authentication)
+router.use(protect);
 
-// Ticket management routes
+// Ticket management routes (staff and above)
 router
   .route('/')
-  .get(ticketController.getTickets);
+  .get(authorize('staff', 'manager', 'admin'), ticketController.getTickets);
 
 router
   .route('/:id')
-  .get(ticketController.getTicket);
+  .get(authorize('staff', 'manager', 'admin'), ticketController.getTicket);
 
 // Update ticket status
 router

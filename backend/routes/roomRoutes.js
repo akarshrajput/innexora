@@ -1,24 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const roomController = require('../controllers/roomController');
-const { authenticateManager } = require('../middleware/authMiddleware');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 // Public routes
 router.get('/number/:number', roomController.getRoomByNumber);
 
 // Protected routes (require authentication)
-router.use(authenticateManager);
+router.use(protect);
 
 // Room CRUD operations
 router
   .route('/')
   .get(roomController.getRooms)
-  .post(roomController.validateRoom, roomController.createRoom);
+  .post(authorize('admin', 'manager'), roomController.validateRoom, roomController.createRoom);
 
 router
   .route('/:id')
   .get(roomController.getRoom)
-  .put(roomController.validateRoom, roomController.updateRoom)
-  .delete(roomController.deleteRoom);
+  .put(authorize('manager', 'admin'), roomController.validateRoom, roomController.updateRoom)
+  .delete(authorize('admin'), roomController.deleteRoom);
 
 module.exports = router;

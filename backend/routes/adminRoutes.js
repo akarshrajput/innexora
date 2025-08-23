@@ -1,15 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const ticketCleanupService = require('../services/ticketCleanupService');
-const { authenticateManager } = require('../middleware/authMiddleware');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
-// All admin routes require manager authentication
-router.use(authenticateManager);
+// All admin routes require authentication
+router.use(protect);
 
 // @desc    Get cleanup service status
 // @route   GET /api/admin/cleanup/status
-// @access  Private/Manager
-router.get('/cleanup/status', (req, res) => {
+// @access  Private/Admin
+router.get('/cleanup/status', authorize('admin', 'manager'), (req, res) => {
   const status = ticketCleanupService.getStatus();
   res.json({
     success: true,

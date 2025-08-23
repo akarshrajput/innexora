@@ -22,7 +22,7 @@ const roomFormSchema = z.object({
     (val) => (val === '' ? undefined : Number(val)),
     z.number().min(1, 'Floor must be at least 1')
   ),
-  status: z.enum(['available', 'occupied', 'maintenance'] as const),
+  status: z.enum(['available', 'occupied', 'maintenance', 'cleaning'] as const),
   description: z.string().optional(),
 });
 
@@ -183,6 +183,7 @@ export default function RoomFormPage() {
                           <SelectItem value="available">Available</SelectItem>
                           <SelectItem value="occupied">Occupied</SelectItem>
                           <SelectItem value="maintenance">Maintenance</SelectItem>
+                          <SelectItem value="cleaning">Cleaning</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

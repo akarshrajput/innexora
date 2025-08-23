@@ -15,7 +15,7 @@ interface Room {
   number: string;
   type: string;
   floor: number;
-  status: 'available' | 'occupied' | 'maintenance';
+  status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
   description: string;
 }
 
@@ -64,6 +64,7 @@ export default function RoomsPage() {
       available: { label: 'Available', variant: 'success' },
       occupied: { label: 'Occupied', variant: 'destructive' },
       maintenance: { label: 'Maintenance', variant: 'warning' },
+      cleaning: { label: 'Cleaning', variant: 'secondary' },
     } as const;
 
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: 'default' };

@@ -1,16 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, ArrowLeft, MessageSquare, Bot, User, Sparkles, Ticket } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, MessageSquare, Bot, User, Sparkles, Ticket, Building2, UserCheck, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import axios from 'axios';
+import { apiClient } from '@/lib/api/client';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -19,40 +18,74 @@ interface Message {
 }
 
 interface GuestInfo {
-  guestName: string;
-  roomNumber: string;
+  _id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  room: {
+    number: string;
+    type: string;
+  };
 }
 
 export default function GuestChatPage() {
   const { roomNumber } = useParams();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [guestName, setGuestName] = useState('');
-  const [showGuestForm, setShowGuestForm] = useState(true);
+  const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null);
+  const [isLoadingGuest, setIsLoadingGuest] = useState(true);
   const [ticketCreated, setTicketCreated] = useState(false);
   const [showTicketDialog, setShowTicketDialog] = useState(false);
   const [pendingTicketMessage, setPendingTicketMessage] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
 
   useEffect(() => {
-    // Get guest name from URL params if available
-    const nameFromUrl = searchParams.get('guestName');
-    if (nameFromUrl) {
-      setGuestName(nameFromUrl);
-      setShowGuestForm(false);
-      // Add welcome message
+    fetchGuestInfo();
+  }, [roomNumber]);
+
+  const fetchGuestInfo = async () => {
+    try {
+      setIsLoadingGuest(true);
+      setError(null);
+      
+      // Fetch guest information by room number
+      const response = await apiClient.get(`/api/guests/room/${roomNumber}`);
+      
+      if (response.data.success && response.data.data) {
+        const guestData = response.data.data;
+        setGuestInfo(guestData);
+        
+        // Add welcome message with guest's name
+        setMessages([{
+          role: 'assistant',
+          content: `Hello ${guestData.name}! Welcome to your personal concierge for Room ${roomNumber}. I'm here to assist you with anything you need during your stay. How may I help you today?`,
+          timestamp: new Date().toISOString()
+        }]);
+      } else {
+        // No active guest found for this room
+        setError('No active guest found for this room. Please verify the room number or contact the front desk.');
+        setMessages([{
+          role: 'assistant',
+          content: `Welcome to Room ${roomNumber}! It appears there's no active guest registered in this room. Please contact the front desk for assistance.`,
+          timestamp: new Date().toISOString()
+        }]);
+      }
+    } catch (error) {
+      console.error('Error fetching guest info:', error);
+      setError('Failed to load guest information. Please try again or contact the front desk.');
       setMessages([{
         role: 'assistant',
-        content: `Hello ${nameFromUrl}! I'm your AI assistant for Room ${roomNumber}. How can I help you today? I can assist with room service, housekeeping, maintenance issues, or any other hotel services.`,
+        content: `I'm having trouble accessing guest information for Room ${roomNumber}. Please try again or contact the front desk for assistance.`,
         timestamp: new Date().toISOString()
       }]);
+    } finally {
+      setIsLoadingGuest(false);
     }
-  }, [roomNumber, searchParams]);
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -62,24 +95,8 @@ export default function GuestChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleGuestFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!guestName.trim()) {
-      toast.error('Please enter your name');
-      return;
-    }
-    setShowGuestForm(false);
-    // Add welcome message
-    setMessages([{
-      role: 'assistant',
-      content: `Hello ${guestName}! I'm your AI assistant for Room ${roomNumber}. How can I help you today? I can assist with room service, housekeeping, maintenance issues, or any other hotel services.`,
-      timestamp: new Date().toISOString()
-    }]);
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || isSubmitting) return;
+  const handleSendMessage = async () => {
+    if (!message.trim() || !guestInfo) return;
 
     const userMessage: Message = {
       role: 'user',
@@ -89,58 +106,74 @@ export default function GuestChatPage() {
 
     setMessages(prev => [...prev, userMessage]);
     setMessage('');
-    setIsSubmitting(true);
+    setIsLoading(true);
 
     try {
-      // Call AI chat API
-      const response = await axios.post(`${API_BASE_URL}/chat/ai`, {
+      // Send message to the chat API
+      const response = await apiClient.post('/api/chat/ai', {
         message: message,
         guestInfo: {
-          guestName: guestName,
-          roomNumber: roomNumber
+          guestId: guestInfo._id,
+          guestName: guestInfo.name,
+          roomNumber: roomNumber,
+          roomType: guestInfo.room?.type
         },
-        conversationHistory: messages
+        conversationHistory: messages.slice(-5) // Send last 5 messages for context
       });
 
-      const aiMessage: Message = {
+      const assistantMessage: Message = {
         role: 'assistant',
         content: response.data.message,
         timestamp: new Date().toISOString()
       };
 
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
 
-      // Remove automatic ticket popup - guests will use manual button instead
+      // Check if this should create a ticket
+      if (response.data.shouldCreateTicket) {
+        setPendingTicketMessage(message);
+        setShowTicketDialog(true);
+      }
 
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('Error sending message:', error);
       toast.error('Failed to send message. Please try again.');
-      // Remove the user message if API call failed
-      setMessages(prev => prev.slice(0, -1));
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: 'I apologize, but I\'m having trouble processing your request right now. Please try again in a moment or contact the front desk for immediate assistance.',
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
   const createServiceRequest = async () => {
+    if (!guestInfo) return;
+    
     try {
+      setIsSubmitting(true);
+      
       // Create a comprehensive summary of the entire conversation
       const conversationSummary = messages.map((msg, index) => 
         `${msg.role === 'user' ? 'Guest' : 'AI Assistant'}: ${msg.content}`
       ).join('\n\n');
 
-      const mainRequest = `Full conversation summary from Room ${roomNumber}:\n\n${conversationSummary}`;
+      const mainRequest = `Service Request from Room ${roomNumber} (${guestInfo.name})\n\n**Initial Message:** ${pendingTicketMessage}\n\n**Full Conversation:**\n${conversationSummary}`;
 
-      const response = await axios.post(`${API_BASE_URL}/tickets/guest`, {
+      // Create a ticket via the API
+      const response = await apiClient.post('/api/tickets/guest', {
         roomNumber: roomNumber,
         guestInfo: {
-          name: guestName,
-          email: `${guestName.toLowerCase().replace(' ', '.')}@guest.hotel`,
-          phone: 'Not provided'
+          id: guestInfo._id,
+          name: guestInfo.name,
+          email: guestInfo.email || '',
+          phone: guestInfo.phone || ''
         },
-        initialMessage: mainRequest,
-        priority: 'medium',
-        conversationHistory: messages
+        initialMessage: pendingTicketMessage,
+        conversationHistory: messages,
+        priority: 'medium' // Default to medium priority
       });
 
       if (response.data.success) {
@@ -173,242 +206,211 @@ Is there anything else I can help you with while you wait?`,
     }
   };
 
-
+  if (isLoadingGuest) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center space-y-4">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <p className="text-gray-700">Loading your information...</p>
+              <p className="text-sm text-gray-500">Room {roomNumber}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-4xl mx-auto p-4">
-        <div className="flex items-center mb-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
           <Button 
             variant="ghost" 
-            size="icon" 
-            onClick={() => router.push('/')}
-            className="mr-2"
+            onClick={() => router.push('/hotel')}
+            className="flex items-center gap-2"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="w-4 h-4" />
+            Change Room
           </Button>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <MessageSquare className="h-6 w-6" />
-            Room {roomNumber} AI Assistant
-          </h1>
-          {ticketCreated && (
-            <div className="ml-auto">
-              <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                ✅ Service Request Created
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900">Room {roomNumber}</h1>
+            {guestInfo ? (
+              <div className="flex items-center justify-center gap-2 text-gray-600">
+                <UserCheck className="w-4 h-4" />
+                <span>{guestInfo.name}</span>
+                {guestInfo.room?.type && (
+                  <>
+                    <Building2 className="w-4 h-4 ml-2" />
+                    <span>{guestInfo.room.type}</span>
+                  </>
+                )}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-amber-600">Guest not found</p>
+            )}
+            <p className="text-sm text-gray-500">AI Assistant</p>
+          </div>
+          <div className="w-20" /> {/* Spacer for layout */}
         </div>
-
-        {showGuestForm ? (
-          <Card className="max-w-md mx-auto">
-            <CardHeader>
-              <div className="flex items-center justify-center mb-4">
-                <Bot className="h-12 w-12 text-primary" />
-              </div>
-              <CardTitle className="text-center text-xl">Welcome to Room {roomNumber}</CardTitle>
-              <p className="text-center text-muted-foreground text-sm mt-2">
-                Chat with our AI assistant for instant help with hotel services
-              </p>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleGuestFormSubmit} className="space-y-4">
-                <div>
-                  <label htmlFor="guestName" className="block text-sm font-medium mb-2">
-                    Your Name
-                  </label>
-                  <Input
-                    id="guestName"
-                    type="text"
-                    placeholder="Enter your name"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    required
-                  />
-                </div>
-                <Button type="submit" className="w-full">
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Start Chat with AI Assistant
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader className="border-b">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Bot className="h-8 w-8 text-primary" />
-                  <div>
-                    <CardTitle className="text-lg">AI Assistant Chat</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {guestName} • Room {roomNumber}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  {!ticketCreated && messages.length > 1 && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => setShowTicketDialog(true)}
-                      className="flex items-center gap-2"
-                    >
-                      <Ticket className="h-4 w-4" />
-                      Raise Ticket
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowGuestForm(true);
-                      setMessages([]);
-                      setTicketCreated(false);
-                    }}
-                  >
-                    New Chat
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="h-[60vh] overflow-y-auto p-4 space-y-4">
-                {messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <div className="text-center">
-                      <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Start a conversation with your AI assistant</p>
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((msg, index) => (
-                    <div 
-                      key={index} 
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div 
-                        className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                          msg.role === 'user'
-                            ? 'bg-primary text-primary-foreground rounded-br-none'
-                            : 'bg-gray-100 dark:bg-gray-800 rounded-bl-none'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          {msg.role === 'user' ? (
-                            <User className="h-4 w-4" />
-                          ) : (
-                            <Bot className="h-4 w-4" />
-                          )}
-                          <span className="text-xs font-medium">
-                            {msg.role === 'user' ? 'You' : 'AI Assistant'}
-                          </span>
-                          <span className="text-xs opacity-70">
-                            {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })}
-                          </span>
-                        </div>
-                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {isSubmitting && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3 rounded-bl-none">
-                      <div className="flex items-center gap-2">
-                        <Bot className="h-4 w-4" />
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm">AI is thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-              
-              <form onSubmit={handleSendMessage} className="border-t p-4">
-                <div className="flex gap-2">
-                  <Textarea
-                    placeholder="Type your message... (e.g., 'I need extra towels' or 'The AC is not working')"
-                    className="min-h-[80px] flex-1"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    disabled={isSubmitting}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage(e);
-                      }
-                    }}
-                  />
-                  <Button 
-                    type="submit" 
-                    size="icon" 
-                    disabled={!message.trim() || isSubmitting}
-                    className="self-end h-[80px]"
-                  >
-                    {isSubmitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  💡 Tip: Press Enter to send, Shift+Enter for new line
-                </p>
-              </form>
-            </CardContent>
-          </Card>
+        
+        {error && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+            <p className="text-amber-800 text-sm">{error}</p>
+          </div>
         )}
 
+        {/* Chat Interface */}
+        <Card className="h-[600px] flex flex-col">
+          <CardHeader className="flex-shrink-0">
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Chat with AI Assistant
+              {guestInfo && (
+                <span className="text-sm font-normal text-gray-500">- {guestInfo.name}</span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col p-0">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-900'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {msg.role === 'assistant' && (
+                        <Bot className="w-4 h-4 mt-1 flex-shrink-0" />
+                      )}
+                      {msg.role === 'user' && (
+                        <User className="w-4 h-4 mt-1 flex-shrink-0" />
+                      )}
+                      <div className="flex-1">
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <p className={`text-xs mt-1 ${
+                          msg.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                        }`}>
+                          {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-lg px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-4 h-4" />
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+              
+            {/* Input */}
+            <div className="border-t p-4 bg-white">
+              <div className="flex gap-2">
+                <Input
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder={guestInfo ? "Type your message..." : "Please check your room number"}
+                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                  disabled={isLoading || !guestInfo}
+                  className="flex-1"
+                />
+                <Button 
+                  type="button" 
+                  onClick={handleSendMessage}
+                  disabled={isLoading || !guestInfo || !message.trim()}
+                  className="flex-shrink-0"
+                  size="icon"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  <span className="sr-only">Send message</span>
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                💡 I can help with room service, housekeeping, maintenance, or create service requests for you.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Ticket Creation Dialog */}
-        <Dialog open={showTicketDialog} onOpenChange={setShowTicketDialog}>
-          <DialogContent>
+        <Dialog open={showTicketDialog} onOpenChange={!isSubmitting ? setShowTicketDialog : undefined}>
+          <DialogContent className="sm:max-w-[425px]" onInteractOutside={(e) => !isSubmitting && e.preventDefault()}>
             <DialogHeader>
-              <DialogTitle>Create Service Request</DialogTitle>
-              <DialogDescription>
-                This will send your complete conversation to hotel staff for assistance. 
-                They will receive the full chat history and respond promptly.
+              <DialogTitle className="flex items-center gap-2">
+                <Ticket className="h-5 w-5 text-blue-600" />
+                Create Service Request
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                Our staff will be notified and will assist you shortly. You can track the status in this chat.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium">Request Details:</p>
-                  <p className="text-sm text-muted-foreground">
-                    <strong>Room:</strong> {roomNumber}<br/>
-                    <strong>Guest:</strong> {guestName}<br/>
-                    <strong>Full Conversation:</strong> {messages.length} messages will be included<br/>
-                    <strong>Priority:</strong> Medium
-                  </p>
-                </div>
-                <div className="bg-muted p-3 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-2">Complete Conversation Summary:</p>
-                  <div className="max-h-40 overflow-y-auto text-xs space-y-2">
-                    {messages.map((msg, index) => (
-                      <div key={index} className="border-l-2 border-gray-300 pl-2">
-                        <div className="font-medium text-xs">
-                          {msg.role === 'user' ? '👤 You' : '🤖 AI Assistant'}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {msg.content.length > 150 ? `${msg.content.slice(0, 150)}...` : msg.content}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2 italic">
-                    ✅ Hotel staff will receive the complete conversation above
-                  </p>
-                </div>
+              <div className="p-3 bg-gray-50 rounded-md">
+                <p className="text-sm text-gray-700 font-medium">Your request:</p>
+                <p className="mt-1 text-sm text-gray-600">{pendingTicketMessage}</p>
               </div>
+              {guestInfo?.room?.type && (
+                <div className="mt-3 text-sm text-gray-600">
+                  <p><span className="font-medium">Room:</span> {roomNumber} ({guestInfo.room.type})</p>
+                  {guestInfo.name && <p><span className="font-medium">Guest:</span> {guestInfo.name}</p>}
+                </div>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowTicketDialog(false)}>
-                Continue Chatting
+              <Button 
+                variant="outline" 
+                onClick={() => !isSubmitting && setShowTicketDialog(false)}
+                disabled={isSubmitting}
+                className="mr-2"
+              >
+                Cancel
               </Button>
-              <Button onClick={createServiceRequest}>
-                Create Service Request
+              <Button 
+                onClick={createServiceRequest}
+                disabled={isSubmitting || ticketCreated}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : ticketCreated ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Request Sent
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send to Staff
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

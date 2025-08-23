@@ -84,7 +84,16 @@ interface Room {
   number: string;
   type: string;
   floor: number;
-  status: 'available' | 'occupied' | 'maintenance';
+  price: number;
+  capacity: number;
+  amenities: string[];
+  description?: string;
+  status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
+  currentGuest?: string | null;
+  manager: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface DashboardStats {
@@ -115,7 +124,25 @@ export default function DashboardPage() {
   const [newMessage, setNewMessage] = useState('');
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [isLoadingAI, setIsLoadingAI] = useState(false);
-  const [newRoom, setNewRoom] = useState({ number: '', type: '', floor: 1 });
+  const [newRoom, setNewRoom] = useState<{
+    number: string;
+    type: string;
+    floor: number;
+    price: number;
+    capacity: number;
+    amenities: string[];
+    description: string;
+    status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
+  }>({
+    number: '',
+    type: '',
+    floor: 1,
+    price: 0,
+    capacity: 1,
+    amenities: [],
+    description: '',
+    status: 'available',
+  });
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [isRoomDialogOpen, setIsRoomDialogOpen] = useState(false);
   const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
@@ -337,14 +364,38 @@ export default function DashboardPage() {
 
   const handleAddRoom = async () => {
     try {
-      await apiClient.post('/rooms', newRoom);
-      setNewRoom({ number: '', type: '', floor: 1 });
-      setIsRoomDialogOpen(false);
-      fetchData();
-      toast.success('Room added successfully');
-    } catch (error) {
+      const roomData = {
+        ...newRoom,
+        price: Number(newRoom.price) || 0,
+        floor: Number(newRoom.floor) || 1,
+        capacity: Number(newRoom.capacity) || 2,
+        amenities: Array.isArray(newRoom.amenities) ? newRoom.amenities : [],
+        status: newRoom.status || 'available',
+        description: newRoom.description || ''
+      };
+
+      const response = await apiClient.post('/rooms', roomData);
+      
+      if (response.data.success) {
+        setNewRoom({
+          number: '',
+          type: '',
+          floor: 1,
+          price: 0,
+          capacity: 2,
+          amenities: [],
+          description: '',
+          status: 'available'
+        });
+        
+        setIsRoomDialogOpen(false);
+        fetchData();
+        toast.success('Room added successfully');
+      }
+    } catch (error: any) {
       console.error('Failed to add room:', error);
-      toast.error('Failed to add room');
+      const errorMessage = error.response?.data?.message || 'Failed to add room';
+      toast.error(typeof errorMessage === 'string' ? errorMessage : 'An error occurred');
     }
   };
 
@@ -454,6 +505,74 @@ export default function DashboardPage() {
                     onChange={(e) => setNewRoom(prev => ({ ...prev, floor: parseInt(e.target.value) || 1 }))}
                     min="1"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="price">Price per night ($)</Label>
+                    <Input
+                      id="price"
+                      type="number"
+                      value={newRoom.price}
+                      onChange={(e) => setNewRoom(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                      min="0"
+                      step="0.01"
+                      placeholder="e.g., 99.99"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="capacity">Capacity</Label>
+                    <Input
+                      id="capacity"
+                      type="number"
+                      value={newRoom.capacity}
+                      onChange={(e) => setNewRoom(prev => ({ ...prev, capacity: parseInt(e.target.value) || 1 }))}
+                      min="1"
+                      max="10"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="amenities">Amenities (comma-separated)</Label>
+                  <Input
+                    id="amenities"
+                    value={newRoom.amenities.join(', ')}
+                    onChange={(e) => setNewRoom(prev => ({
+                      ...prev,
+                      amenities: e.target.value.split(',').map(item => item.trim()).filter(Boolean)
+                    }))}
+                    placeholder="e.g., WiFi, TV, AC, Mini Bar"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newRoom.description}
+                    onChange={(e) => setNewRoom(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Room description and features..."
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="status">Status</Label>
+                  <Select
+                    value={newRoom.status}
+                    onValueChange={(value: 'available' | 'occupied' | 'maintenance' | 'cleaning') => 
+                      setNewRoom(prev => ({ ...prev, status: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="available">Available</SelectItem>
+                      <SelectItem value="occupied">Occupied</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                      <SelectItem value="cleaning">Cleaning</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <Button onClick={handleAddRoom} className="w-full">
                   Add Room

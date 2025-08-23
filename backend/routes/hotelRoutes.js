@@ -9,23 +9,19 @@ const {
   getHotelsByManager,
   validateHotel,
 } = require('../controllers/hotelController');
-const { authenticateManager } = require('../middleware/authMiddleware');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 // Public routes
 router.route('/').get(getHotels);
 router.route('/:id').get(getHotel);
 
 // Protected routes (require authentication)
-router.use(authenticateManager);
+router.use(protect);
 
-// Manager's hotels
-router.route('/manager/my-hotels').get(getHotelsByManager);
-
-// Hotel CRUD operations
-router.route('/').post(validateHotel, createHotel);
-router
-  .route('/:id')
-  .put(validateHotel, updateHotel)
-  .delete(deleteHotel);
+// Manager and admin routes
+router.get('/manager/me', authorize('manager', 'admin'), getHotelsByManager);
+router.post('/', authorize('manager', 'admin'), validateHotel, createHotel);
+router.put('/:id', authorize('manager', 'admin'), validateHotel, updateHotel);
+router.delete('/:id', authorize('admin'), deleteHotel);
 
 module.exports = router;

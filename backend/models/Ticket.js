@@ -52,11 +52,6 @@ const ticketSchema = new mongoose.Schema(
         trim: true,
       },
     },
-    manager: {
-      type: mongoose.Schema.ObjectId,
-      ref: 'User',
-      required: true,
-    },
     priority: {
       type: String,
       enum: ['low', 'medium', 'high'],
@@ -80,16 +75,13 @@ const ticketSchema = new mongoose.Schema(
 );
 
 // Indexes for common queries
-ticketSchema.index({ manager: 1, status: 1 });
+ticketSchema.index({ status: 1 });
 ticketSchema.index({ room: 1, status: 1 });
 ticketSchema.index({ 'guestInfo.name': 'text', 'guestInfo.email': 'text' });
 
 // Static method to get ticket statistics
-ticketSchema.statics.getStats = async function(managerId) {
+ticketSchema.statics.getStats = async function() {
   const stats = await this.aggregate([
-    {
-      $match: { manager: managerId }
-    },
     {
       $group: {
         _id: '$status',

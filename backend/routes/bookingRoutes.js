@@ -9,7 +9,7 @@ const {
   generateGuestLink,
   validateBooking,
 } = require('../controllers/bookingController');
-const { authenticateManager } = require('../middleware/authMiddleware');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 // Public routes (no authentication required)
 router.post('/', validateBooking, createBooking);
@@ -20,11 +20,11 @@ router.delete('/:id/cancel', cancelBooking);
 router.get('/guest-link', generateGuestLink);
 
 // Protected routes (require authentication)
-router.use(authenticateManager);
+router.use(protect);
 
-// Hotel manager routes
-router.get('/', getBookings);
-router.put('/:id', updateBooking);
-router.delete('/:id', cancelBooking);
+// Admin/Manager routes
+router.get('/', authorize('staff', 'manager', 'admin'), getBookings);
+router.put('/:id', authorize('staff', 'manager', 'admin'), updateBooking);
+router.delete('/:id', authorize('staff', 'manager', 'admin'), cancelBooking);
 
 module.exports = router;

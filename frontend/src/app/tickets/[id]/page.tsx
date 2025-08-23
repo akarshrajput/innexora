@@ -25,7 +25,7 @@ interface Ticket {
   roomNumber: string;
   guestName: string;
   subject: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'raised' | 'in_progress' | 'completed';
   priority: 'low' | 'medium' | 'high';
   createdAt: string;
   updatedAt: string;

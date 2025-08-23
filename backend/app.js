@@ -1,9 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 const http = require('http');
+const cookieParser = require('cookie-parser');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
@@ -13,8 +13,13 @@ const roomRoutes = require('./routes/roomRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const foodRoutes = require('./routes/foodRoutes');
+const guestRoutes = require('./routes/guestRoutes');
+const guestHistoryRoutes = require('./routes/guestHistoryRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const billRoutes = require('./routes/billRoutes');
 
-// Import error handler
+// Import middleware
 const { errorHandler } = require('./middleware/errorMiddleware');
 
 // Initialize Express app
@@ -30,24 +35,21 @@ app.use(cors({
   ].filter(Boolean),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-HTTP-Method-Override']
 }));
+
+// Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+// Cookie parser
+app.use(cookieParser());
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Supabase URL and/or Anon Key not configured');
+// JWT secret check
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL ERROR: JWT_SECRET is not defined');
   process.exit(1);
 }
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Make supabase available in app
-app.set('supabase', supabase);
 
 // MongoDB connection
 mongoose
@@ -71,6 +73,11 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/food', foodRoutes);
+app.use('/api/guests/history', guestHistoryRoutes);
+app.use('/api/guests', guestRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/bills', billRoutes);
 
 // Backend only serves API routes - frontend is deployed separately
 

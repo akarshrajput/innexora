@@ -7,10 +7,11 @@ const ErrorResponse = require('../utils/errorResponse');
 // @access  Private/Manager
 exports.getRooms = async (req, res, next) => {
   try {
-    const rooms = await Room.find({ 
-      manager: req.user.userId,
-      isActive: true 
-    }).select('-__v -createdAt -updatedAt');
+    console.log('Fetching rooms for user:', req.user);
+    // Temporarily remove the manager filter to debug
+    const rooms = await Room.find({ isActive: true })
+      .select('-__v -createdAt -updatedAt')
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -30,9 +31,8 @@ exports.getRoom = async (req, res, next) => {
   try {
     const room = await Room.findOne({
       _id: req.params.id,
-      manager: req.user.userId,
       isActive: true
-    }).select('-__v -createdAt -updatedAt');
+    }).select('-__v -createdAt -updatedAt').lean();
 
     if (!room) {
       return next(new ErrorResponse(`Room not found with id of ${req.params.id}`, 404));
@@ -53,13 +53,9 @@ exports.getRoom = async (req, res, next) => {
 // @access  Private/Manager
 exports.createRoom = async (req, res, next) => {
   try {
-    // Add manager to request body
-    req.body.manager = req.user.userId;
-    
     // Check for duplicate room number
     const roomExists = await Room.findOne({
       number: req.body.number,
-      manager: req.user.userId,
       isActive: true
     });
 
@@ -70,7 +66,14 @@ exports.createRoom = async (req, res, next) => {
       });
     }
 
-    const room = await Room.create(req.body);
+    // Prepare room data
+    const roomData = {
+      ...req.body,
+      // Ensure price is a number
+      price: Number(req.body.price) || 0,
+    };
+
+    const room = await Room.create(roomData);
 
     res.status(201).json({
       success: true,
@@ -91,9 +94,10 @@ exports.createRoom = async (req, res, next) => {
 // @access  Private/Manager
 exports.updateRoom = async (req, res, next) => {
   try {
+    console.log('Updating room:', req.params.id, 'for user:', req.user);
+    // Temporarily remove manager filter for debugging
     let room = await Room.findOne({
       _id: req.params.id,
-      manager: req.user.userId,
       isActive: true
     });
 
@@ -107,10 +111,10 @@ exports.updateRoom = async (req, res, next) => {
     if (req.body.number && req.body.number !== room.number) {
       const roomExists = await Room.findOne({
         number: req.body.number,
-        manager: req.user.userId,
         isActive: true,
         _id: { $ne: req.params.id }
       });
+      console.log('Duplicate check - room exists:', roomExists);
 
       if (roomExists) {
         return next(
@@ -149,7 +153,6 @@ exports.deleteRoom = async (req, res, next) => {
   try {
     const room = await Room.findOne({
       _id: req.params.id,
-      manager: req.user.userId,
       isActive: true
     });
 
@@ -241,6 +244,13 @@ exports.validateRoom = [
     .optional()
     .isIn(['available', 'occupied', 'maintenance'])
     .withMessage('Invalid room status'),
+    
+  body('price')
+    .isNumeric()
+    .withMessage('Price must be a number')
+    .isFloat({ min: 0 })
+    .withMessage('Price cannot be negative')
+    .toFloat(),
     
   (req, res, next) => {
     const errors = validationResult(req);
