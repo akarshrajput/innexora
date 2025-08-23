@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Send, Loader2, ArrowLeft, MessageSquare, Bot, User, Sparkles, Ticket, Building2, UserCheck, Check } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, MessageSquare, Bot, User, Sparkles, Ticket, Building2, UserCheck, Check, Hotel } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -53,7 +53,7 @@ export default function GuestChatPage() {
       setError(null);
       
       // Fetch guest information by room number
-      const response = await apiClient.get(`/api/guests/room/${roomNumber}`);
+      const response = await apiClient.get(`/guests/room/${roomNumber}`);
       
       if (response.data.success && response.data.data) {
         const guestData = response.data.data;
@@ -110,7 +110,7 @@ export default function GuestChatPage() {
 
     try {
       // Send message to the chat API
-      const response = await apiClient.post('/api/chat/ai', {
+      const response = await apiClient.post('/chat/ai', {
         message: message,
         guestInfo: {
           guestId: guestInfo._id,
@@ -163,7 +163,7 @@ export default function GuestChatPage() {
       const mainRequest = `Service Request from Room ${roomNumber} (${guestInfo.name})\n\n**Initial Message:** ${pendingTicketMessage}\n\n**Full Conversation:**\n${conversationSummary}`;
 
       // Create a ticket via the API
-      const response = await apiClient.post('/api/tickets/guest', {
+      const response = await apiClient.post('/tickets/guest', {
         roomNumber: roomNumber,
         guestInfo: {
           id: guestInfo._id,
@@ -208,13 +208,13 @@ Is there anything else I can help you with while you wait?`,
 
   if (isLoadingGuest) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 flex items-center justify-center">
+      <div className="min-h-screen bg-background p-4 flex items-center justify-center">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center space-y-4">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-              <p className="text-gray-700">Loading your information...</p>
-              <p className="text-sm text-gray-500">Room {roomNumber}</p>
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-foreground">Loading your information...</p>
+              <p className="text-sm text-muted-foreground">Room {roomNumber}</p>
             </div>
           </CardContent>
         </Card>
@@ -223,7 +223,7 @@ Is there anything else I can help you with while you wait?`,
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen bg-background p-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -236,9 +236,12 @@ Is there anything else I can help you with while you wait?`,
             Change Room
           </Button>
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Room {roomNumber}</h1>
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Hotel className="w-6 h-6 text-primary" />
+              <h1 className="text-2xl font-bold text-foreground">Room {roomNumber}</h1>
+            </div>
             {guestInfo ? (
-              <div className="flex items-center justify-center gap-2 text-gray-600">
+              <div className="flex items-center justify-center gap-2 text-muted-foreground">
                 <UserCheck className="w-4 h-4" />
                 <span>{guestInfo.name}</span>
                 {guestInfo.room?.type && (
@@ -249,16 +252,16 @@ Is there anything else I can help you with while you wait?`,
                 )}
               </div>
             ) : (
-              <p className="text-sm text-amber-600">Guest not found</p>
+              <p className="text-sm text-destructive">Guest not found</p>
             )}
-            <p className="text-sm text-gray-500">AI Assistant</p>
+            <p className="text-sm text-muted-foreground">AI Assistant</p>
           </div>
           <div className="w-20" /> {/* Spacer for layout */}
         </div>
         
         {error && (
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
-            <p className="text-amber-800 text-sm">{error}</p>
+          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+            <p className="text-destructive text-sm">{error}</p>
           </div>
         )}
 
@@ -284,8 +287,8 @@ Is there anything else I can help you with while you wait?`,
                   <div
                     className={`max-w-[80%] rounded-lg px-4 py-2 ${
                       msg.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-900'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
                     }`}
                   >
                     <div className="flex items-start gap-2">
@@ -298,7 +301,7 @@ Is there anything else I can help you with while you wait?`,
                       <div className="flex-1">
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                         <p className={`text-xs mt-1 ${
-                          msg.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                          msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground/70'
                         }`}>
                           {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })}
                         </p>
@@ -309,13 +312,13 @@ Is there anything else I can help you with while you wait?`,
               ))}
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-100 rounded-lg px-4 py-2">
+                  <div className="bg-muted rounded-lg px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4" />
+                      <Bot className="w-4 h-4 text-muted-foreground" />
                       <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                       </div>
                     </div>
                   </div>
@@ -325,7 +328,7 @@ Is there anything else I can help you with while you wait?`,
             </div>
               
             {/* Input */}
-            <div className="border-t p-4 bg-white">
+            <div className="border-t p-4 bg-background">
               <div className="flex gap-2">
                 <Input
                   value={message}
@@ -350,7 +353,7 @@ Is there anything else I can help you with while you wait?`,
                   <span className="sr-only">Send message</span>
                 </Button>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs text-muted-foreground mt-2">
                 💡 I can help with room service, housekeeping, maintenance, or create service requests for you.
               </p>
             </div>
@@ -362,7 +365,7 @@ Is there anything else I can help you with while you wait?`,
           <DialogContent className="sm:max-w-[425px]" onInteractOutside={(e) => !isSubmitting && e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Ticket className="h-5 w-5 text-blue-600" />
+                <Ticket className="h-5 w-5 text-primary" />
                 Create Service Request
               </DialogTitle>
               <DialogDescription className="pt-2">
@@ -370,12 +373,12 @@ Is there anything else I can help you with while you wait?`,
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <div className="p-3 bg-gray-50 rounded-md">
-                <p className="text-sm text-gray-700 font-medium">Your request:</p>
-                <p className="mt-1 text-sm text-gray-600">{pendingTicketMessage}</p>
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm text-foreground font-medium">Your request:</p>
+                <p className="mt-1 text-sm text-muted-foreground">{pendingTicketMessage}</p>
               </div>
               {guestInfo?.room?.type && (
-                <div className="mt-3 text-sm text-gray-600">
+                <div className="mt-3 text-sm text-muted-foreground">
                   <p><span className="font-medium">Room:</span> {roomNumber} ({guestInfo.room.type})</p>
                   {guestInfo.name && <p><span className="font-medium">Guest:</span> {guestInfo.name}</p>}
                 </div>
@@ -393,7 +396,6 @@ Is there anything else I can help you with while you wait?`,
               <Button 
                 onClick={createServiceRequest}
                 disabled={isSubmitting || ticketCreated}
-                className="bg-blue-600 hover:bg-blue-700"
               >
                 {isSubmitting ? (
                   <>

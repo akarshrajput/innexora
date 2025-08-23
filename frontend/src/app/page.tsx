@@ -27,8 +27,8 @@ export default function Home() {
 
   const handleGuestAccess = (e: React.FormEvent) => {
     e.preventDefault();
-    if (roomNumber && guestName) {
-      router.push(`/hotel/${roomNumber}?guestName=${encodeURIComponent(guestName)}`);
+    if (roomNumber) {
+      router.push(`/hotel/${roomNumber}`);
     }
   };
 
@@ -104,7 +104,7 @@ export default function Home() {
               </div>
               <CardTitle className="text-2xl">Guest Services</CardTitle>
               <CardDescription>
-                Access your room's AI assistant for instant help with hotel services and submit service requests
+                Enter your room number to access AI assistant and hotel services
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -117,16 +117,6 @@ export default function Home() {
                     required
                     value={roomNumber}
                     onChange={(e) => setRoomNumber(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="guestName">Your Name</Label>
-                  <Input
-                    id="guestName"
-                    placeholder="Enter your full name"
-                    required
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
                   />
                 </div>
                 <Button type="submit" className="w-full">
