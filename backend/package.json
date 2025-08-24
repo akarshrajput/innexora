@@ -18,14 +18,12 @@
     "booking",
     "management",
     "api",
-    "supabase",
     "mongodb"
   ],
   "author": "",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",

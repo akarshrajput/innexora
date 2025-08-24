@@ -29,7 +29,8 @@ const qrCodeSchema = new mongoose.Schema(
       default: true,
     },
     createdBy: {
-      type: String, // Supabase user ID
+      type: mongoose.Schema.ObjectId,
+      ref: 'User',
       required: true,
     },
   },

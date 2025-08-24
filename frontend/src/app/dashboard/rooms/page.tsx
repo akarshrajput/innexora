@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Hotel, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Hotel, Plus, Pencil, Trash2, Search, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -30,6 +30,11 @@ export default function RoomsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [floorFilter, setFloorFilter] = useState('all');
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
   const [formData, setFormData] = useState({
     number: '',
     type: '',
@@ -176,13 +181,37 @@ export default function RoomsPage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+  const filteredRooms = rooms.filter(room => {
+    const matchesSearch = room.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         room.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (room.description && room.description.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesStatus = statusFilter === 'all' || room.status === statusFilter;
+    const matchesType = typeFilter === 'all' || room.type === typeFilter;
+    const matchesFloor = floorFilter === 'all' || room.floor.toString() === floorFilter;
+    
+    const matchesPrice = (() => {
+      if (!priceRange.min && !priceRange.max) return true;
+      const price = room.price || 0;
+      const min = priceRange.min ? parseFloat(priceRange.min) : 0;
+      const max = priceRange.max ? parseFloat(priceRange.max) : Infinity;
+      return price >= min && price <= max;
+    })();
+    
+    return matchesSearch && matchesStatus && matchesType && matchesFloor && matchesPrice;
+  });
+
+  const uniqueTypes = Array.from(new Set(rooms.map(room => room.type))).sort();
+  const uniqueFloors = Array.from(new Set(rooms.map(room => room.floor))).sort((a, b) => a - b);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setTypeFilter('all');
+    setFloorFilter('all');
+    setPriceRange({ min: '', max: '' });
+  };
+
 
   return (
     <div className="space-y-6">
@@ -197,11 +226,98 @@ export default function RoomsPage() {
         </Button>
       </div>
 
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search rooms..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            
+            {/* Status Filter */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="available">Available</SelectItem>
+                <SelectItem value="occupied">Occupied</SelectItem>
+                <SelectItem value="maintenance">Maintenance</SelectItem>
+                <SelectItem value="cleaning">Cleaning</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* Type Filter */}
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {uniqueTypes.map(type => (
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            {/* Floor Filter */}
+            <Select value={floorFilter} onValueChange={setFloorFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Floors" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Floors</SelectItem>
+                {uniqueFloors.map(floor => (
+                  <SelectItem key={floor} value={floor.toString()}>Floor {floor}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            {/* Price Range */}
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                placeholder="Min price"
+                value={priceRange.min}
+                onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                className="w-full"
+              />
+              <Input
+                type="number"
+                placeholder="Max price"
+                value={priceRange.max}
+                onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                className="w-full"
+              />
+            </div>
+            
+            {/* Clear Filters */}
+            <Button variant="outline" onClick={clearFilters} className="w-full">
+              Clear Filters
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Hotel className="h-5 w-5" />
-            Rooms ({rooms.length})
+            Rooms ({filteredRooms.length} of {rooms.length})
           </CardTitle>
           <CardDescription>
             Manage all hotel rooms, their types, and current status
@@ -222,47 +338,54 @@ export default function RoomsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rooms.map((room) => (
-                <TableRow key={room._id}>
-                  <TableCell className="font-medium">{room.number}</TableCell>
-                  <TableCell>{room.type}</TableCell>
-                  <TableCell>{room.floor}</TableCell>
-                  <TableCell>${room.price?.toFixed(2)}</TableCell>
-                  <TableCell>{room.capacity}</TableCell>
-                  <TableCell>
-                    <Badge className={getStatusColor(room.status)}>
-                      {room.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {room.description || '-'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEditDialog(room)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(room._id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {rooms.length === 0 && (
+              {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No rooms found. Add your first room to get started.
+                  <TableCell colSpan={8} className="text-center py-8">
+                    Loading rooms...
                   </TableCell>
                 </TableRow>
+              ) : filteredRooms.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    {rooms.length === 0 ? 'No rooms found. Add your first room to get started.' : 'No rooms match your current filters.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredRooms.map((room) => (
+                  <TableRow key={room._id}>
+                    <TableCell className="font-medium">{room.number}</TableCell>
+                    <TableCell>{room.type}</TableCell>
+                    <TableCell>{room.floor}</TableCell>
+                    <TableCell>${room.price?.toFixed(2)}</TableCell>
+                    <TableCell>{room.capacity}</TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(room.status)}>
+                        {room.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {room.description || '-'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditDialog(room)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(room._id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>

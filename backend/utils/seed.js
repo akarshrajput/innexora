@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const { createClient } = require('@supabase/supabase-js');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
 const Hotel = require('../models/Hotel');
@@ -22,11 +21,6 @@ const connectDB = async () => {
   }
 };
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // Clear existing data
 const clearDatabase = async () => {
@@ -44,31 +38,11 @@ const clearDatabase = async () => {
 const createTestManager = async () => {
   try {
     const email = 'manager@example.com';
-    const password = 'password123';
+    const managerId = new mongoose.Types.ObjectId();
     
-    // Check if user already exists in Supabase
-    const { data: existingUser } = await supabase.auth.admin.getUserByEmail(email);
+    console.log(`👤 Using test manager: ${email}`);
     
-    let userId;
-    
-    if (existingUser) {
-      userId = existingUser.id;
-      console.log(`👤 Using existing manager: ${email}`);
-    } else {
-      // Create user in Supabase
-      const { data, error } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true, // Skip email confirmation for testing
-      });
-      
-      if (error) throw error;
-      
-      userId = data.user.id;
-      console.log(`👤 Created test manager: ${email}`);
-    }
-    
-    return { id: userId, email };
+    return { id: managerId, email };
   } catch (error) {
     console.error('Error creating test manager:', error);
     process.exit(1);
