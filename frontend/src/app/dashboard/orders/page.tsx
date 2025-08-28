@@ -19,7 +19,9 @@ import {
   CheckCircle,
   XCircle,
   Eye,
-  Edit
+  Edit,
+  Receipt,
+  AlertCircle
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -32,8 +34,10 @@ interface OrderItem {
     price: number;
     preparationTime: number;
   };
+  foodName?: string;
   quantity: number;
   price: number;
+  unitPrice?: number;
   specialInstructions?: string;
 }
 
@@ -58,6 +62,8 @@ interface Order {
   actualDeliveryTime?: string;
   specialInstructions?: string;
   paymentStatus: 'pending' | 'paid' | 'failed';
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface FoodItem {
@@ -117,12 +123,17 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [stats, setStats] = useState({
-    pending: 0,
-    preparing: 0,
-    ready: 0,
+    pending: { count: 0, totalAmount: 0 },
+    confirmed: { count: 0, totalAmount: 0 },
+    preparing: { count: 0, totalAmount: 0 },
+    ready: { count: 0, totalAmount: 0 },
+    delivered: { count: 0, totalAmount: 0 },
+    cancelled: { count: 0, totalAmount: 0 },
     totalRevenue: 0,
-    averageOrderValue: 0
+    period: 'today'
   });
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   const [orderForm, setOrderForm] = useState<OrderForm>({
     guestId: '',
@@ -170,10 +181,41 @@ export default function OrdersPage() {
 
   const fetchStats = async () => {
     try {
+      setStatsLoading(true);
+      setStatsError(null);
       const response = await apiClient.get('/orders/stats');
-      setStats(response.data.data);
+      
+      // Handle the API response structure properly
+      const statsData = response.data.data;
+      
+      // Ensure all status types are present with default values
+      const defaultStatus = { count: 0, totalAmount: 0 };
+      setStats({
+        pending: statsData.pending || defaultStatus,
+        confirmed: statsData.confirmed || defaultStatus,
+        preparing: statsData.preparing || defaultStatus,
+        ready: statsData.ready || defaultStatus,
+        delivered: statsData.delivered || defaultStatus,
+        cancelled: statsData.cancelled || defaultStatus,
+        totalRevenue: statsData.totalRevenue || 0,
+        period: statsData.period || 'today'
+      });
     } catch (error) {
       console.error('Error fetching stats:', error);
+      setStatsError('Failed to load statistics');
+      // Set default stats on error
+      setStats({
+        pending: { count: 0, totalAmount: 0 },
+        confirmed: { count: 0, totalAmount: 0 },
+        preparing: { count: 0, totalAmount: 0 },
+        ready: { count: 0, totalAmount: 0 },
+        delivered: { count: 0, totalAmount: 0 },
+        cancelled: { count: 0, totalAmount: 0 },
+        totalRevenue: 0,
+        period: 'today'
+      });
+    } finally {
+      setStatsLoading(false);
     }
   };
 
@@ -191,25 +233,34 @@ export default function OrdersPage() {
         return;
       }
 
-      console.log('Creating order with data:', {
-        ...orderForm,
-        items: validItems
-      });
-
       const response = await apiClient.post('/orders', {
         ...orderForm,
         items: validItems
       });
       
-      console.log('Order creation response:', response.data);
-      toast.success('Order created successfully!');
-      setIsCreateDialogOpen(false);
-      resetOrderForm();
-      fetchOrders();
-      fetchStats();
+      if (response.data.success) {
+        toast.success('Order created successfully!');
+        setIsCreateDialogOpen(false);
+        resetOrderForm();
+        fetchOrders();
+        fetchStats();
+      } else {
+        toast.error(response.data.message || 'Failed to create order');
+      }
     } catch (error: any) {
       console.error('Error creating order:', error);
-      toast.error(error.message || 'Failed to create order');
+      
+      // Better error handling
+      let errorMessage = 'Failed to create order';
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.errors) {
+        errorMessage = error.response.data.errors.join(', ');
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -285,56 +336,170 @@ export default function OrdersPage() {
     return ['pending', 'confirmed', 'preparing', 'ready'].includes(status);
   };
 
+  // Safe date formatting function
+  const formatDateSafely = (dateString: string | undefined, fallbackDate?: string) => {
+    try {
+      if (dateString) {
+        const date = new Date(dateString);
+        if (!isNaN(date.getTime())) {
+          return formatDistanceToNow(date, { addSuffix: true });
+        }
+      }
+      if (fallbackDate) {
+        const fallback = new Date(fallbackDate);
+        if (!isNaN(fallback.getTime())) {
+          return formatDistanceToNow(fallback, { addSuffix: true });
+        }
+      }
+      return 'Recently';
+    } catch (error) {
+      console.error('Date formatting error:', error);
+      return 'Recently';
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Preparing</CardTitle>
-            <ChefHat className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats.preparing}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ready</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.ready}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₹{stats.totalRevenue}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Order Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₹{stats.averageOrderValue}</div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {statsLoading ? (
+          // Loading skeleton for stats
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
+                <div className="h-4 w-4 bg-gray-200 rounded animate-pulse" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 w-16 bg-gray-200 rounded animate-pulse mb-1" />
+                <div className="h-3 w-20 bg-gray-200 rounded animate-pulse" />
+              </CardContent>
+            </Card>
+          ))
+        ) : statsError ? (
+          // Error state for stats
+          <div className="col-span-full">
+            <Card className="border-red-200 bg-red-50">
+              <CardContent className="p-4 text-center">
+                <div className="text-red-600 mb-2">
+                  <AlertCircle className="h-8 w-8 mx-auto" />
+                </div>
+                <p className="text-red-800 font-medium">{statsError}</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={fetchStats}
+                  className="mt-2"
+                >
+                  Retry
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-yellow-600">{stats.pending?.count || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  ₹{stats.pending?.totalAmount || 0} pending
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+                <ChefHat className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-600">
+                  {(stats.confirmed?.count || 0) + (stats.preparing?.count || 0)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Confirmed: {stats.confirmed?.count || 0} | Preparing: {stats.preparing?.count || 0}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Ready for Delivery</CardTitle>
+                <CheckCircle className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{stats.ready?.count || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  ₹{stats.ready?.totalAmount || 0} ready
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">₹{stats.totalRevenue || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  Period: {stats.period || 'today'}
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
+
+      {/* Additional Stats Row */}
+      {!statsLoading && !statsError && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Completed Orders</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">{stats.delivered?.count || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                ₹{stats.delivered?.totalAmount || 0} completed
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Cancelled Orders</CardTitle>
+              <XCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{stats.cancelled?.count || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                ₹{stats.cancelled?.totalAmount || 0} cancelled
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+              <Receipt className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {(stats.pending?.count || 0) + 
+                 (stats.confirmed?.count || 0) + 
+                 (stats.preparing?.count || 0) + 
+                 (stats.ready?.count || 0) + 
+                 (stats.delivered?.count || 0) + 
+                 (stats.cancelled?.count || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                All time orders
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Actions and Filters */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -545,7 +710,7 @@ export default function OrdersPage() {
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {formatDistanceToNow(new Date(order.orderDate), { addSuffix: true })}
+                          {formatDateSafely(order.orderDate, order.createdAt || order.updatedAt)}
                         </div>
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
@@ -643,12 +808,14 @@ export default function OrdersPage() {
                   {selectedOrder.items.map((item, index) => (
                     <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
                       <div>
-                        <span className="font-medium">{item.quantity}x {item.food.name}</span>
+                        <span className="font-medium">
+                          {item.quantity}x {item.food?.name || item.foodName || 'Unknown Item'}
+                        </span>
                         {item.specialInstructions && (
                           <p className="text-xs text-muted-foreground">Note: {item.specialInstructions}</p>
                         )}
                       </div>
-                      <span className="font-medium">₹{item.price}</span>
+                      <span className="font-medium">₹{item.price || item.unitPrice || 0}</span>
                     </div>
                   ))}
                 </div>
@@ -657,7 +824,12 @@ export default function OrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Order Date</Label>
-                  <p className="text-sm">{new Date(selectedOrder.orderDate).toLocaleString()}</p>
+                  <p className="text-sm">
+                    {selectedOrder.orderDate ? 
+                      new Date(selectedOrder.orderDate).toLocaleString() :
+                      new Date(selectedOrder.createdAt || selectedOrder.updatedAt).toLocaleString()
+                    }
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Payment Status</Label>

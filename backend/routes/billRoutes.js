@@ -3,36 +3,41 @@ const router = express.Router();
 const billController = require('../controllers/billController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
-// All bill routes require authentication
+// Protected routes (require authentication)
 router.use(protect);
 
-// Bill statistics (staff and above)
-router.get('/stats', authorize('staff', 'manager', 'admin'), billController.getBillStats);
-
-// Bill CRUD operations (staff and above)
+// Bill management routes
 router
   .route('/')
   .get(authorize('staff', 'manager', 'admin'), billController.getBills);
 
 router
-  .route('/:id')
-  .get(authorize('staff', 'manager', 'admin'), billController.getBill);
+  .route('/stats')
+  .get(authorize('staff', 'manager', 'admin'), billController.getBillStats);
 
-// Get bill by guest
-router.get('/guest/:guestId', billController.getBillByGuest);
+router
+  .route('/summary')
+  .get(authorize('staff', 'manager', 'admin'), billController.getBillSummary);
 
-// Bill item management
-router.post('/:id/items', billController.validateBillItem, billController.addBillItem);
-router.delete('/:id/items/:itemId', billController.removeBillItem);
+router
+  .route('/guest/:guestId')
+  .get(authorize('staff', 'manager', 'admin'), billController.getBillByGuest);
 
-// Payment management
-router.post('/:id/payments', billController.validatePayment, billController.addPayment);
+router
+  .route('/checkout/:guestId')
+  .get(authorize('manager', 'admin'), billController.checkGuestCheckout);
 
-// Discount and tax management
-router.post('/:id/discount', billController.applyDiscount);
-router.post('/:id/tax', billController.addTax);
+// Payment and charge management
+router
+  .route('/:id/payments')
+  .post(authorize('manager', 'admin'), billController.validatePayment, billController.recordPayment);
 
-// Finalize bill
-router.post('/:id/finalize', billController.finalizeBill);
+router
+  .route('/:id/charges')
+  .post(authorize('manager', 'admin'), billController.validateCharge, billController.addCharge);
+
+router
+  .route('/:id/finalize')
+  .put(authorize('manager', 'admin'), billController.finalizeBill);
 
 module.exports = router;

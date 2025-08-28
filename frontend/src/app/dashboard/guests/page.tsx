@@ -101,7 +101,7 @@ export default function GuestsPage() {
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('checked_in');
   const [isCheckInDialogOpen, setIsCheckInDialogOpen] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -144,17 +144,36 @@ export default function GuestsPage() {
     fetchStats();
   }, [pagination.current, searchTerm, statusFilter]);
 
+  useEffect(() => {
+    // Refetch guests when status filter changes
+    fetchGuests();
+  }, [statusFilter]);
+
   const fetchGuests = async () => {
     try {
-      const params = new URLSearchParams({
-        page: pagination.current.toString(),
-        limit: pagination.limit.toString()
-      });
+      // By default, only fetch active guests (checked-in)
+      let endpoint = '/guests/active';
       
-      if (searchTerm) params.append('search', searchTerm);
-      if (statusFilter !== 'all') params.append('status', statusFilter);
+      // If user wants to see all guests or specific status, use the main endpoint
+      if (statusFilter === 'all' || statusFilter !== 'checked_in') {
+        endpoint = '/guests';
+        const params = new URLSearchParams({
+          page: pagination.current.toString(),
+          limit: pagination.limit.toString()
+        });
+        
+        if (searchTerm) params.append('search', searchTerm);
+        if (statusFilter !== 'all') params.append('status', statusFilter);
+        
+        endpoint += `?${params}`;
+      } else {
+        // For active guests, add search if provided
+        if (searchTerm) {
+          endpoint += `?search=${encodeURIComponent(searchTerm)}`;
+        }
+      }
       
-      const response = await apiClient.get(`/guests?${params}`);
+      const response = await apiClient.get(endpoint);
       
       // Handle both response formats for backward compatibility
       const guestsData = response.data.data || [];
@@ -198,6 +217,16 @@ export default function GuestsPage() {
     }
   };
 
+  const fetchGuestHistory = async () => {
+    try {
+      const response = await apiClient.get('/guests/history');
+      return response.data.data || [];
+    } catch (error) {
+      console.error('Error fetching guest history:', error);
+      return [];
+    }
+  };
+
   const handleCheckIn = async () => {
     try {
       setIsLoading(true);
@@ -219,7 +248,9 @@ export default function GuestsPage() {
   const handleCheckOut = async (guestId: string) => {
     try {
       setIsLoading(true);
-      await apiClient.post(`/guests/${guestId}/checkout`);
+      await apiClient.put(`/guests/${guestId}/checkout`, {
+        checkedOutBy: 'Manager' // This should come from user context
+      });
       toast.success('Guest checked out successfully!');
       fetchGuests();
       fetchAvailableRooms();
@@ -351,6 +382,17 @@ export default function GuestsPage() {
               <SelectItem value="no_show">No Show</SelectItem>
             </SelectContent>
           </Select>
+          
+          <Button
+            variant="outline"
+            onClick={() => {
+              // Navigate to guest history page
+              window.location.href = '/dashboard/guest-history';
+            }}
+          >
+            <UserX className="h-4 w-4 mr-2" />
+            View Guest History
+          </Button>
         </div>
         
         <Dialog open={isCheckInDialogOpen} onOpenChange={setIsCheckInDialogOpen}>

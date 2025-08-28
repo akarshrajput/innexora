@@ -126,8 +126,24 @@ orderSchema.index({ createdAt: -1 });
 orderSchema.pre('save', async function (next) {
   if (!this.isNew) return next();
   
-  const count = await this.constructor.countDocuments({});
-  this.orderNumber = `ORD-${Date.now().toString().slice(-6)}-${(count + 1).toString().padStart(3, '0')}`;
+  try {
+    // Generate a unique order number
+    const timestamp = Date.now().toString().slice(-8);
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    this.orderNumber = `ORD-${timestamp}-${random}`;
+    
+    // Ensure uniqueness by checking if this order number already exists
+    const existingOrder = await this.constructor.findOne({ orderNumber: this.orderNumber });
+    if (existingOrder) {
+      // If duplicate, generate a new one
+      const newRandom = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      this.orderNumber = `ORD-${timestamp}-${newRandom}`;
+    }
+  } catch (error) {
+    console.error('Error generating order number:', error);
+    // Fallback order number
+    this.orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+  }
   
   next();
 });

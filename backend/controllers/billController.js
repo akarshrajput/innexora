@@ -4,61 +4,41 @@ const Room = require('../models/Room');
 const { body, validationResult } = require('express-validator');
 const ErrorResponse = require('../utils/errorResponse');
 
-// @desc    Get all bills
+// @desc    Get all bills with enhanced filtering
 // @route   GET /api/bills
 // @access  Private/Manager
 exports.getBills = async (req, res, next) => {
   try {
-    console.log(`Fetching all bills for manager: ${req.user.email}`);
-    const { status, roomNumber, guestName, period } = req.query;
+    const { status, roomNumber, guestName, type = 'active' } = req.query;
     
-    // Build query
-    const query = {};
+    let bills;
     
-    if (status) query.status = status;
-    if (roomNumber) query.roomNumber = roomNumber;
-    if (guestName) query.guestName = { $regex: guestName, $options: 'i' };
-    
-    // Period filter
-    if (period) {
-      const now = new Date();
-      let dateFilter = {};
-      
-      switch (period) {
-        case 'today':
-          dateFilter = {
-            createdAt: {
-              $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-              $lt: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-            }
-          };
-          break;
-        case 'week':
-          const weekStart = new Date(now.setDate(now.getDate() - now.getDay()));
-          dateFilter = { createdAt: { $gte: weekStart } };
-          break;
-        case 'month':
-          dateFilter = {
-            createdAt: {
-              $gte: new Date(now.getFullYear(), now.getMonth(), 1)
-            }
-          };
-          break;
-      }
-      
-      if (Object.keys(dateFilter).length > 0) {
-        query = { ...query, ...dateFilter };
-      }
-    }
+    if (type === 'active') {
+      // Get only active bills (current guests)
+      bills = await Bill.getActiveBills();
+    } else if (type === 'finalized') {
+      // Get finalized bills (guest history)
+      bills = await Bill.getFinalizedBills();
+    } else if (type === 'all') {
+      // Get all bills with filters
+      const query = {};
+      if (status) query.status = status;
+      if (roomNumber) query.roomNumber = roomNumber;
+      if (guestName) query.guestName = { $regex: guestName, $options: 'i' };
 
-    const bills = await Bill.find(query)
-      .populate('guest', 'name phone email')
-      .populate('room', 'number type floor')
-      .sort({ createdAt: -1 });
+      bills = await Bill.find(query)
+        .populate('guest', 'name phone email status')
+        .populate('room', 'number type floor status')
+        .sort({ createdAt: -1 });
+    } else {
+      // Default to active bills
+      bills = await Bill.getActiveBills();
+    }
 
     res.status(200).json({
       success: true,
       count: bills.length,
+      type,
       data: bills
     });
   } catch (error) {
@@ -67,27 +47,19 @@ exports.getBills = async (req, res, next) => {
   }
 };
 
-// @desc    Get single bill
-// @route   GET /api/bills/:id
+// @desc    Get billing statistics
+// @route   GET /api/bills/stats
 // @access  Private/Manager
-exports.getBill = async (req, res, next) => {
+exports.getBillStats = async (req, res, next) => {
   try {
-    console.log(`Fetching bill ${req.params.id} for manager: ${req.user.email}`);
-    const bill = await Bill.findById(req.params.id)
-    .populate('guest', 'name phone email idType idNumber address')
-    .populate('room', 'number type floor amenities')
-    .populate('items.orderId', 'orderNumber items');
-
-    if (!bill) {
-      return next(new ErrorResponse('Bill not found', 404));
-    }
-
+    const stats = await Bill.getBillingStats();
+    
     res.status(200).json({
       success: true,
-      data: bill
+      data: stats
     });
   } catch (error) {
-    console.error('Get bill error:', error);
+    console.error('Get bill stats error:', error);
     next(new ErrorResponse('Server error', 500));
   }
 };
@@ -97,16 +69,13 @@ exports.getBill = async (req, res, next) => {
 // @access  Private/Manager
 exports.getBillByGuest = async (req, res, next) => {
   try {
-    const bill = await Bill.findOne({
-      guest: req.params.guestId,
-      status: { $ne: 'cancelled' }
-    })
-    .populate('guest', 'name phone email')
-    .populate('room', 'number type floor')
-    .populate('items.orderId', 'orderNumber');
+    const bill = await Bill.getBillSummary(req.params.guestId);
 
     if (!bill) {
-      return next(new ErrorResponse('Bill not found for this guest', 404));
+      return res.status(404).json({
+        success: false,
+        message: 'No bill found for this guest'
+      });
     }
 
     res.status(200).json({
@@ -119,220 +88,170 @@ exports.getBillByGuest = async (req, res, next) => {
   }
 };
 
-// @desc    Add item to bill
-// @route   POST /api/bills/:id/items
-// @access  Private/Manager
-exports.addBillItem = async (req, res, next) => {
-  try {
-    const { type, description, amount, quantity = 1, notes } = req.body;
-    
-    const bill = await Bill.findOne({
-      _id: req.params.id,
-      status: 'active'
-    });
-
-    if (!bill) {
-      return next(new ErrorResponse('Active bill not found', 404));
-    }
-
-    const newItem = {
-      type,
-      description,
-      amount: parseFloat(amount),
-      quantity: parseInt(quantity),
-      unitPrice: parseFloat(amount),
-      addedBy: req.user.name || 'Manager',
-      notes,
-      date: new Date()
-    };
-
-    bill.items.push(newItem);
-    await bill.save();
-
-    res.status(201).json({
-      success: true,
-      data: bill
-    });
-  } catch (error) {
-    console.error('Add bill item error:', error);
-    next(new ErrorResponse('Server error', 500));
-  }
-};
-
-// @desc    Remove item from bill
-// @route   DELETE /api/bills/:id/items/:itemId
-// @access  Private/Manager
-exports.removeBillItem = async (req, res, next) => {
-  try {
-    const bill = await Bill.findOne({
-      _id: req.params.id,
-      status: 'active'
-    });
-
-    if (!bill) {
-      return next(new ErrorResponse('Active bill not found', 404));
-    }
-
-    bill.items = bill.items.filter(item => item._id.toString() !== req.params.itemId);
-    await bill.save();
-
-    res.status(200).json({
-      success: true,
-      data: bill
-    });
-  } catch (error) {
-    console.error('Remove bill item error:', error);
-    next(new ErrorResponse('Server error', 500));
-  }
-};
-
-// @desc    Add payment to bill
+// @desc    Record payment for a bill
 // @route   POST /api/bills/:id/payments
 // @access  Private/Manager
-exports.addPayment = async (req, res, next) => {
+exports.recordPayment = async (req, res, next) => {
   try {
-    const { amount, method, reference, notes } = req.body;
-    
-    const bill = await Bill.findOne({
-      _id: req.params.id
-    });
+    const { amount, method, reference, notes, receivedBy } = req.body;
 
+    if (!amount || !method || !receivedBy) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount, payment method, and received by are required'
+      });
+    }
+
+    const bill = await Bill.findById(req.params.id);
     if (!bill) {
       return next(new ErrorResponse('Bill not found', 404));
     }
 
-    const payment = {
-      amount: parseFloat(amount),
+    // Check if bill is still active
+    if (!['active', 'partially_paid'].includes(bill.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot add payment to finalized or cancelled bill'
+      });
+    }
+
+    // Add payment record
+    bill.payments.push({
+      amount: Number(amount),
       method,
-      reference,
-      notes,
-      receivedBy: req.user.name || 'Manager',
+      reference: reference || '',
+      receivedBy,
+      notes: notes || '',
       date: new Date()
-    };
+    });
 
-    bill.payments.push(payment);
     await bill.save();
 
-    res.status(201).json({
+    // Populate for response
+    await bill.populate([
+      { path: 'guest', select: 'name phone email' },
+      { path: 'room', select: 'number type floor' }
+    ]);
+
+    res.status(200).json({
       success: true,
+      message: 'Payment recorded successfully',
       data: bill
     });
   } catch (error) {
-    console.error('Add payment error:', error);
+    console.error('Record payment error:', error);
     next(new ErrorResponse('Server error', 500));
   }
 };
 
-// @desc    Apply discount to bill
-// @route   POST /api/bills/:id/discount
+// @desc    Add manual charge to bill
+// @route   POST /api/bills/:id/charges
 // @access  Private/Manager
-exports.applyDiscount = async (req, res, next) => {
+exports.addCharge = async (req, res, next) => {
   try {
-    const { amount, description, notes } = req.body;
-    
-    const bill = await Bill.findOne({
-      _id: req.params.id,
-      status: 'active'
-    });
+    const { type, description, amount, quantity = 1, notes, addedBy } = req.body;
 
-    if (!bill) {
-      return next(new ErrorResponse('Active bill not found', 404));
+    if (!type || !description || !amount || !addedBy) {
+      return res.status(400).json({
+        success: false,
+        message: 'Type, description, amount, and added by are required'
+      });
     }
 
-    const discountItem = {
-      type: 'discount',
-      description: description || 'Discount Applied',
-      amount: -Math.abs(parseFloat(amount)), // Ensure negative for discount
-      quantity: 1,
-      unitPrice: -Math.abs(parseFloat(amount)),
-      addedBy: req.user.name || 'Manager',
-      notes,
-      date: new Date()
-    };
+    const bill = await Bill.findById(req.params.id);
+    if (!bill) {
+      return next(new ErrorResponse('Bill not found', 404));
+    }
 
-    bill.items.push(discountItem);
+    // Check if bill is still active
+    if (!['active', 'partially_paid'].includes(bill.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot add charges to finalized or cancelled bill'
+      });
+    }
+
+    // Add charge item
+    bill.items.push({
+      type,
+      description,
+      amount: Number(amount),
+      quantity: Number(quantity),
+      unitPrice: Number(amount),
+      addedBy,
+      date: new Date(),
+      notes: notes || ''
+    });
+
     await bill.save();
 
-    res.status(201).json({
+    // Populate for response
+    await bill.populate([
+      { path: 'guest', select: 'name phone email' },
+      { path: 'room', select: 'number type floor' }
+    ]);
+
+    res.status(200).json({
       success: true,
+      message: 'Charge added successfully',
       data: bill
     });
   } catch (error) {
-    console.error('Apply discount error:', error);
-    next(new ErrorResponse('Server error', 500));
-  }
-};
-
-// @desc    Add tax to bill
-// @route   POST /api/bills/:id/tax
-// @access  Private/Manager
-exports.addTax = async (req, res, next) => {
-  try {
-    const { percentage, description } = req.body;
-    
-    const bill = await Bill.findOne({
-      _id: req.params.id,
-      status: 'active'
-    });
-
-    if (!bill) {
-      return next(new ErrorResponse('Active bill not found', 404));
-    }
-
-    // Calculate tax on current subtotal
-    const taxAmount = (bill.subtotal * parseFloat(percentage)) / 100;
-
-    const taxItem = {
-      type: 'tax',
-      description: description || `Tax (${percentage}%)`,
-      amount: taxAmount,
-      quantity: 1,
-      unitPrice: taxAmount,
-      addedBy: req.user.name || 'Manager',
-      date: new Date()
-    };
-
-    bill.items.push(taxItem);
-    await bill.save();
-
-    res.status(201).json({
-      success: true,
-      data: bill
-    });
-  } catch (error) {
-    console.error('Add tax error:', error);
+    console.error('Add charge error:', error);
     next(new ErrorResponse('Server error', 500));
   }
 };
 
 // @desc    Finalize bill
-// @route   POST /api/bills/:id/finalize
+// @route   PUT /api/bills/:id/finalize
 // @access  Private/Manager
 exports.finalizeBill = async (req, res, next) => {
   try {
-    const bill = await Bill.findOne({
-      _id: req.params.id,
-      status: 'active'
-    });
+    const { finalizedBy, notes } = req.body;
 
+    if (!finalizedBy) {
+      return res.status(400).json({
+        success: false,
+        message: 'Finalized by is required'
+      });
+    }
+
+    const bill = await Bill.findById(req.params.id);
     if (!bill) {
-      return next(new ErrorResponse('Active bill not found', 404));
+      return next(new ErrorResponse('Bill not found', 404));
     }
 
-    bill.finalizedAt = new Date();
-    bill.finalizedBy = req.user.name || 'Manager';
-    
-    // Update status based on payment
-    if (bill.balanceAmount <= 0) {
-      bill.status = 'paid';
-    } else if (bill.paidAmount > 0) {
-      bill.status = 'partially_paid';
+    if (bill.status === 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot finalize a cancelled bill'
+      });
     }
+
+    if (bill.balanceAmount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot finalize bill with outstanding balance of ₹${bill.balanceAmount}`
+      });
+    }
+
+    // Update bill status
+    bill.status = 'finalized';
+    bill.finalizedAt = new Date();
+    bill.finalizedBy = finalizedBy;
+    if (notes) bill.notes = notes;
 
     await bill.save();
 
+    // Populate for response
+    await bill.populate([
+      { path: 'guest', select: 'name phone email' },
+      { path: 'room', select: 'number type floor' }
+    ]);
+
     res.status(200).json({
       success: true,
+      message: 'Bill finalized successfully',
       data: bill
     });
   } catch (error) {
@@ -341,103 +260,64 @@ exports.finalizeBill = async (req, res, next) => {
   }
 };
 
-// @desc    Get billing statistics
-// @route   GET /api/bills/stats
+// @desc    Get bill summary for dashboard
+// @route   GET /api/bills/summary
 // @access  Private/Manager
-exports.getBillStats = async (req, res, next) => {
+exports.getBillSummary = async (req, res, next) => {
   try {
-    const { period = 'month' } = req.query;
-    
-    let dateFilter = {};
-    const now = new Date();
-    
-    switch (period) {
-      case 'today':
-        dateFilter = {
-          createdAt: {
-            $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-            $lt: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-          }
-        };
-        break;
-      case 'week':
-        const weekStart = new Date(now.setDate(now.getDate() - now.getDay()));
-        dateFilter = { createdAt: { $gte: weekStart } };
-        break;
-      case 'month':
-        dateFilter = {
-          createdAt: {
-            $gte: new Date(now.getFullYear(), now.getMonth(), 1)
-          }
-        };
-        break;
-    }
-
-    const stats = await Bill.aggregate([
-      { $match: { ...dateFilter } },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          totalAmount: { $sum: '$totalAmount' },
-          paidAmount: { $sum: '$paidAmount' },
-          balanceAmount: { $sum: '$balanceAmount' }
-        }
-      }
+    const [activeBills, finalizedBills, stats] = await Promise.all([
+      Bill.getActiveBills(),
+      Bill.getFinalizedBills(),
+      Bill.getBillingStats()
     ]);
-
-    const formattedStats = stats.reduce((acc, curr) => {
-      acc[curr._id] = {
-        count: curr.count,
-        totalAmount: curr.totalAmount,
-        paidAmount: curr.paidAmount,
-        balanceAmount: curr.balanceAmount
-      };
-      return acc;
-    }, {});
-
-    // Calculate totals
-    const totalRevenue = stats.reduce((sum, stat) => sum + stat.totalAmount, 0);
-    const totalPaid = stats.reduce((sum, stat) => sum + stat.paidAmount, 0);
-    const totalPending = stats.reduce((sum, stat) => sum + stat.balanceAmount, 0);
 
     res.status(200).json({
       success: true,
       data: {
-        ...formattedStats,
-        totalRevenue,
-        totalPaid,
-        totalPending,
-        period
+        activeBills: activeBills.length,
+        finalizedBills: finalizedBills.length,
+        stats
       }
     });
   } catch (error) {
-    console.error('Get bill stats error:', error);
+    console.error('Get bill summary error:', error);
     next(new ErrorResponse('Server error', 500));
   }
 };
 
-// Validation middleware for adding bill items
-exports.validateBillItem = [
-  body('type')
-    .notEmpty()
-    .withMessage('Item type is required')
-    .isIn(['room_charge', 'food_order', 'service_charge', 'tax', 'discount', 'advance_payment', 'other'])
-    .withMessage('Invalid item type'),
+// @desc    Check if guest can check out
+// @route   GET /api/bills/checkout/:guestId
+// @access  Private/Manager
+exports.checkGuestCheckout = async (req, res, next) => {
+  try {
+    const checkoutInfo = await Guest.canCheckOut(req.params.guestId);
     
-  body('description')
+    res.status(200).json({
+      success: true,
+      data: checkoutInfo
+    });
+  } catch (error) {
+    console.error('Check guest checkout error:', error);
+    next(new ErrorResponse('Server error', 500));
+  }
+};
+
+// Validation middleware
+exports.validatePayment = [
+  body('amount')
+    .isNumeric()
+    .withMessage('Amount must be a number')
+    .isFloat({ min: 0.01 })
+    .withMessage('Amount must be greater than 0'),
+    
+  body('method')
+    .isIn(['cash', 'card', 'upi', 'bank_transfer', 'other'])
+    .withMessage('Invalid payment method'),
+    
+  body('receivedBy')
     .trim()
     .notEmpty()
-    .withMessage('Description is required'),
-    
-  body('amount')
-    .isFloat()
-    .withMessage('Amount must be a valid number'),
-    
-  body('quantity')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Quantity must be at least 1'),
+    .withMessage('Received by is required'),
     
   (req, res, next) => {
     const errors = validationResult(req);
@@ -451,17 +331,24 @@ exports.validateBillItem = [
   }
 ];
 
-// Validation middleware for payments
-exports.validatePayment = [
-  body('amount')
-    .isFloat({ min: 0.01 })
-    .withMessage('Payment amount must be greater than 0'),
+exports.validateCharge = [
+  body('type')
+    .isIn(['room_charge', 'food_order', 'service_charge', 'tax', 'discount', 'other'])
+    .withMessage('Invalid charge type'),
     
-  body('method')
+  body('description')
+    .trim()
     .notEmpty()
-    .withMessage('Payment method is required')
-    .isIn(['cash', 'card', 'upi', 'bank_transfer', 'other'])
-    .withMessage('Invalid payment method'),
+    .withMessage('Description is required'),
+    
+  body('amount')
+    .isNumeric()
+    .withMessage('Amount must be a number'),
+    
+  body('addedBy')
+    .trim()
+    .notEmpty()
+    .withMessage('Added by is required'),
     
   (req, res, next) => {
     const errors = validationResult(req);

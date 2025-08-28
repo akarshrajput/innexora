@@ -2,6 +2,7 @@ const app = require('./app');
 const http = require('http');
 const { Server } = require('socket.io');
 const ticketCleanupService = require('./services/ticketCleanupService');
+const roomCleanupService = require('./services/roomCleanupService');
 
 // Get port from environment and store in Express.
 const port = process.env.PORT || 10000;
@@ -51,6 +52,9 @@ server.listen(port, () => {
   
   // Start the ticket cleanup service
   ticketCleanupService.start();
+  
+  // Start the room cleanup service
+  roomCleanupService.start();
 });
 
 // Handle unhandled promise rejections
@@ -75,6 +79,7 @@ process.on('uncaughtException', (err) => {
 process.on('SIGTERM', () => {
   console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
   ticketCleanupService.stop();
+  roomCleanupService.stop();
   server.close(() => {
     console.log('💥 Process terminated!');
   });

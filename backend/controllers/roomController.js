@@ -220,44 +220,176 @@ exports.getRoomByNumber = async (req, res, next) => {
   }
 };
 
+// @desc    Update room status safely
+// @route   PUT /api/rooms/:id/status
+// @access  Private/Manager
+exports.updateRoomStatus = async (req, res, next) => {
+  try {
+    const { status, reason, updatedBy } = req.body;
+
+    if (!status || !updatedBy) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status and updated by are required'
+      });
+    }
+
+    // Use the safe method from the Room model
+    const room = await Room.updateRoomStatus(req.params.id, status, reason);
+
+    res.status(200).json({
+      success: true,
+      message: `Room ${room.number} status updated to ${status}`,
+      data: room
+    });
+  } catch (error) {
+    console.error('Update room status error:', error);
+    
+    if (error.message.includes('Cannot change status')) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    next(new ErrorResponse('Server error', 500));
+  }
+};
+
+// @desc    Get rooms by status
+// @route   GET /api/rooms/status/:status
+// @access  Private/Manager
+exports.getRoomsByStatus = async (req, res, next) => {
+  try {
+    const { status } = req.params;
+    const rooms = await Room.getRoomsByStatus(status);
+
+    res.status(200).json({
+      success: true,
+      count: rooms.length,
+      status,
+      data: rooms
+    });
+  } catch (error) {
+    console.error('Get rooms by status error:', error);
+    next(new ErrorResponse('Server error', 500));
+  }
+};
+
+// @desc    Get available rooms
+// @route   GET /api/rooms/available
+// @access  Private/Manager
+exports.getAvailableRooms = async (req, res, next) => {
+  try {
+    const rooms = await Room.getAvailableRooms();
+
+    res.status(200).json({
+      success: true,
+      count: rooms.length,
+      data: rooms
+    });
+  } catch (error) {
+    console.error('Get available rooms error:', error);
+    next(new ErrorResponse('Server error', 500));
+  }
+};
+
+// @desc    Get occupied rooms
+// @route   GET /api/rooms/occupied
+// @access  Private/Manager
+exports.getOccupiedRooms = async (req, res, next) => {
+  try {
+    const rooms = await Room.getOccupiedRooms();
+
+    res.status(200).json({
+      success: true,
+      count: rooms.length,
+      data: rooms
+    });
+  } catch (error) {
+    console.error('Get occupied rooms error:', error);
+    next(new ErrorResponse('Server error', 500));
+  }
+};
+
+// @desc    Get room summary for dashboard
+// @route   GET /api/rooms/summary
+// @access  Private/Manager
+exports.getRoomSummary = async (req, res, next) => {
+  try {
+    const [availableRooms, occupiedRooms, cleaningRooms, maintenanceRooms] = await Promise.all([
+      Room.getAvailableRooms(),
+      Room.getOccupiedRooms(),
+      Room.getRoomsByStatus('cleaning'),
+      Room.getRoomsByStatus('maintenance')
+    ]);
+
+    const summary = {
+      total: availableRooms.length + occupiedRooms.length + cleaningRooms.length + maintenanceRooms.length,
+      available: availableRooms.length,
+      occupied: occupiedRooms.length,
+      cleaning: cleaningRooms.length,
+      maintenance: maintenanceRooms.length,
+      occupancyRate: Math.round(((occupiedRooms.length / (availableRooms.length + occupiedRooms.length)) * 100) || 0)
+    };
+
+    res.status(200).json({
+      success: true,
+      data: summary
+    });
+  } catch (error) {
+    console.error('Get room summary error:', error);
+    next(new ErrorResponse('Server error', 500));
+  }
+};
+
 // Validation middleware for room
-exports.validateRoom = [
+exports.validateRoomData = [
   body('number')
     .trim()
     .notEmpty()
     .withMessage('Room number is required')
-    .matches(/^[0-9A-Za-z-]+$/)
-    .withMessage('Room number can only contain letters, numbers, and hyphens'),
-    
+    .isNumeric()
+    .withMessage('Room number must be numeric'),
+  
   body('type')
     .trim()
     .notEmpty()
     .withMessage('Room type is required')
-    .isLength({ max: 50 })
-    .withMessage('Room type must be less than 50 characters'),
-    
+    .isIn(['single', 'double', 'triple', 'suite', 'deluxe'])
+    .withMessage('Invalid room type'),
+  
   body('floor')
-    .isInt({ min: 1, max: 200 })
-    .withMessage('Floor must be a number between 1 and 200'),
-    
-  body('status')
-    .optional()
-    .isIn(['available', 'occupied', 'maintenance'])
-    .withMessage('Invalid room status'),
-    
+    .trim()
+    .notEmpty()
+    .withMessage('Floor is required')
+    .isNumeric()
+    .withMessage('Floor must be numeric'),
+  
+  body('capacity')
+    .isNumeric()
+    .withMessage('Capacity must be numeric')
+    .custom(value => value >= 1)
+    .withMessage('Capacity must be at least 1'),
+  
   body('price')
     .isNumeric()
-    .withMessage('Price must be a number')
-    .isFloat({ min: 0 })
-    .withMessage('Price cannot be negative')
-    .toFloat(),
-    
+    .withMessage('Price must be numeric')
+    .custom(value => value >= 0)
+    .withMessage('Price cannot be negative'),
+  
+  body('status')
+    .optional()
+    .isIn(['available', 'occupied', 'cleaning', 'maintenance', 'reserved'])
+    .withMessage('Invalid room status'),
+  
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        message: 'Validation error',
+        errors: errors.array().map(err => err.msg)
       });
     }
     next();

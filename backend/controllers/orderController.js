@@ -119,8 +119,8 @@ exports.createOrder = async (req, res, next) => {
       });
     }
 
-    // Create order
-    const order = await Order.create({
+    // Create order with explicit orderNumber (will be overridden by pre-save hook)
+    const orderData = {
       guest: guest._id,
       guestName: guest.name,
       room: guest.room._id,
@@ -130,10 +130,19 @@ exports.createOrder = async (req, res, next) => {
       type,
       specialInstructions,
       estimatedPreparationTime: maxPreparationTime,
-    });
+      orderNumber: `TEMP-${Date.now()}` // Temporary, will be replaced by pre-save hook
+    };
+
+    const order = await Order.create(orderData);
 
     // Add order to guest's bill
-    await Bill.addOrderToBill(guest._id, order);
+    try {
+      await Bill.addOrderToBill(guest._id, order);
+      console.log(`✅ Order ${order.orderNumber} added to bill for guest ${guest.name}`);
+    } catch (billError) {
+      console.error('Warning: Could not add order to bill:', billError);
+      // Don't fail the order creation if bill update fails
+    }
 
     // Populate order for response
     await order.populate([

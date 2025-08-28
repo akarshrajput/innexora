@@ -21,26 +21,33 @@ import {
   Eye,
   FileText,
   CheckCircle,
-  Calculator
+  Calculator,
+  RefreshCw
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 
 interface BillItem {
-  type: 'room_charge' | 'food_order' | 'service_charge' | 'tax' | 'other';
+  _id: string;
+  type: 'room_charge' | 'food_order' | 'service_charge' | 'tax' | 'discount' | 'other';
   description: string;
   amount: number;
   quantity?: number;
+  unitPrice?: number;
   date: string;
-  reference?: string;
+  orderId?: string;
+  addedBy?: string;
+  notes?: string;
 }
 
 interface Payment {
+  _id: string;
   amount: number;
   method: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'other';
   reference?: string;
   date: string;
+  receivedBy: string;
   notes?: string;
 }
 
@@ -51,20 +58,28 @@ interface Bill {
     _id: string;
     name: string;
     phone: string;
+    email?: string;
   };
   room: {
     _id: string;
     number: string;
+    type?: string;
+    floor?: number;
   };
+  checkInDate: string;
+  checkOutDate?: string;
   items: BillItem[];
   payments: Payment[];
   subtotal: number;
-  tax: number;
-  discount: number;
-  total: number;
+  taxAmount: number;
+  discountAmount: number;
+  totalAmount: number;
   paidAmount: number;
-  balance: number;
-  status: 'active' | 'paid' | 'partially_paid' | 'cancelled';
+  balanceAmount: number;
+  status: 'active' | 'paid' | 'partially_paid' | 'cancelled' | 'finalized';
+  finalizedAt?: string;
+  finalizedBy?: string;
+  isGuestCheckedOut?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,14 +109,16 @@ const statusColors = {
   active: 'bg-blue-100 text-blue-800',
   paid: 'bg-green-100 text-green-800',
   partially_paid: 'bg-yellow-100 text-yellow-800',
-  cancelled: 'bg-red-100 text-red-800'
+  cancelled: 'bg-red-100 text-red-800',
+  finalized: 'bg-purple-100 text-purple-800'
 };
 
 const statusLabels = {
   active: 'Active',
   paid: 'Paid',
   partially_paid: 'Partially Paid',
-  cancelled: 'Cancelled'
+  cancelled: 'Cancelled',
+  finalized: 'Finalized'
 };
 
 const itemTypeLabels = {
@@ -132,9 +149,11 @@ export default function BillsPage() {
   const [isAddPaymentDialogOpen, setIsAddPaymentDialogOpen] = useState(false);
   const [stats, setStats] = useState({
     totalRevenue: 0,
-    pendingAmount: 0,
-    paidBills: 0,
-    overdueAmount: 0
+    totalOutstanding: 0,
+    active: { count: 0, totalAmount: 0, totalPaid: 0 },
+    paid: { count: 0, totalAmount: 0, totalPaid: 0 },
+    partially_paid: { count: 0, totalAmount: 0, totalPaid: 0 },
+    finalized: { count: 0, totalAmount: 0, totalPaid: 0 }
   });
 
   const [addItemForm, setAddItemForm] = useState<AddItemForm>({
@@ -162,7 +181,29 @@ export default function BillsPage() {
 
   const fetchBills = async () => {
     try {
-      const response = await apiClient.get('/bills');
+      console.log('🔍 Fetching bills...');
+      // Get active bills by default
+      const response = await apiClient.get('/bills?type=active');
+      console.log('📊 Bills API response:', response);
+      console.log('📋 Bills data:', response.data.data);
+      setBills(response.data.data);
+      console.log('✅ Bills state updated with:', response.data.data);
+    } catch (error) {
+      console.error('❌ Error fetching bills:', error);
+      toast.error('Failed to fetch bills');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchBillsByType = async (type: string) => {
+    try {
+      setIsLoading(true);
+      let endpoint = '/bills';
+      if (type !== 'all') {
+        endpoint += `?type=${type}`;
+      }
+      const response = await apiClient.get(endpoint);
       setBills(response.data.data);
     } catch (error) {
       console.error('Error fetching bills:', error);
@@ -183,10 +224,23 @@ export default function BillsPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await apiClient.get('/bills/stats');
-      setStats(response.data.data);
+      console.log('🔍 Fetching bill stats...');
+      const response = await apiClient.get('/bills/summary');
+      console.log('📊 Stats API response:', response);
+      const data = response.data.data;
+      console.log('📋 Stats data:', data);
+      
+      // Update stats with the new backend structure
+      setStats({
+        totalRevenue: data.totalRevenue || 0,
+        totalOutstanding: data.totalOutstanding || 0,
+        active: data.active || { count: 0, totalAmount: 0, totalPaid: 0 },
+        paid: data.paid || { count: 0, totalAmount: 0, totalPaid: 0 },
+        partially_paid: data.partially_paid || { count: 0, totalAmount: 0, totalPaid: 0 },
+        finalized: data.finalized || { count: 0, totalAmount: 0, totalPaid: 0 }
+      });
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('❌ Error fetching stats:', error);
     }
   };
 
@@ -195,7 +249,10 @@ export default function BillsPage() {
     
     try {
       setIsLoading(true);
-      await apiClient.post(`/bills/${selectedBill._id}/items`, addItemForm);
+      await apiClient.post(`/bills/${selectedBill._id}/charges`, {
+        ...addItemForm,
+        addedBy: 'Manager' // This should come from user context
+      });
       toast.success('Item added to bill successfully!');
       setIsAddItemDialogOpen(false);
       resetAddItemForm();
@@ -217,7 +274,10 @@ export default function BillsPage() {
     
     try {
       setIsLoading(true);
-      await apiClient.post(`/bills/${selectedBill._id}/payments`, addPaymentForm);
+      await apiClient.post(`/bills/${selectedBill._id}/payments`, {
+        ...addPaymentForm,
+        receivedBy: 'Manager' // This should come from user context
+      });
       toast.success('Payment added successfully!');
       setIsAddPaymentDialogOpen(false);
       resetAddPaymentForm();
@@ -239,7 +299,13 @@ export default function BillsPage() {
     
     try {
       setIsLoading(true);
-      await apiClient.post(`/bills/${selectedBill._id}/discount`, { amount: discountAmount, description: 'Manager Discount' });
+      await apiClient.post(`/bills/${selectedBill._id}/charges`, {
+        type: 'discount',
+        description: 'Manager Discount',
+        amount: -Math.abs(discountAmount), // Negative amount for discount
+        quantity: 1,
+        addedBy: 'Manager'
+      });
       toast.success('Discount applied successfully!');
       setDiscountAmount(0);
       fetchBills();
@@ -260,7 +326,15 @@ export default function BillsPage() {
     
     try {
       setIsLoading(true);
-      await apiClient.post(`/bills/${selectedBill._id}/tax`, { percentage: taxAmount, description: 'Service Tax' });
+      // Calculate tax amount based on current subtotal
+        const taxAmountValue = (selectedBill.subtotal * taxAmount) / 100;
+      await apiClient.post(`/bills/${selectedBill._id}/charges`, {
+        type: 'tax',
+        description: `Service Tax (${taxAmount}%)`,
+        amount: taxAmountValue,
+        quantity: 1,
+        addedBy: 'Manager'
+      });
       toast.success('Tax applied successfully!');
       setTaxAmount(0);
       fetchBills();
@@ -279,13 +353,50 @@ export default function BillsPage() {
   const handleFinalizeBill = async (billId: string) => {
     try {
       setIsLoading(true);
-      await apiClient.post(`/bills/${billId}/finalize`);
+      await apiClient.put(`/bills/${billId}/finalize`, {
+        finalizedBy: 'Manager' // This should come from user context
+      });
       toast.success('Bill finalized successfully!');
       fetchBills();
       fetchStats();
     } catch (error: any) {
       console.error('Error finalizing bill:', error);
       toast.error(error.response?.data?.message || 'Failed to finalize bill');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGuestCheckout = async (guestId: string) => {
+    try {
+      setIsLoading(true);
+      await apiClient.put(`/guests/${guestId}/checkout`);
+      toast.success('Guest checked out successfully!');
+      fetchBills();
+      fetchStats();
+    } catch (error: any) {
+      console.error('Error checking out guest:', error);
+      toast.error(error.response?.data?.message || 'Failed to checkout guest');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const viewGuestHistory = () => {
+    // Navigate to guest history page
+    window.location.href = '/dashboard/guest-history';
+  };
+
+  const handleStatusChange = async (billId: string, newStatus: string) => {
+    try {
+      setIsLoading(true);
+      await apiClient.put(`/bills/${billId}`, { status: newStatus });
+      toast.success('Bill status updated successfully!');
+      fetchBillsByType(statusFilter);
+      fetchStats();
+    } catch (error: any) {
+      console.error('Error updating bill status:', error);
+      toast.error(error.response?.data?.message || 'Failed to update bill status');
     } finally {
       setIsLoading(false);
     }
@@ -317,6 +428,13 @@ export default function BillsPage() {
     return matchesSearch && matchesStatus;
   });
 
+  console.log('🔍 Bills filtering:', {
+    totalBills: bills.length,
+    searchTerm,
+    statusFilter,
+    filteredBills: filteredBills.length
+  });
+
   const getStatusBadge = (status: string) => {
     return (
       <Badge variant="outline" className={statusColors[status as keyof typeof statusColors]}>
@@ -340,29 +458,38 @@ export default function BillsPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Amount</CardTitle>
+            <CardTitle className="text-sm font-medium">Outstanding Amount</CardTitle>
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">₹{stats.pendingAmount}</div>
+            <div className="text-2xl font-bold text-orange-600">₹{stats.totalOutstanding}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Bills</CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{stats.active?.count || 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Paid Bills</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.paidBills}</div>
+            <div className="text-2xl font-bold text-green-600">{stats.paid?.count || 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overdue Amount</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Finalized Bills</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">₹{stats.overdueAmount}</div>
+            <div className="text-2xl font-bold text-purple-600">{stats.finalized?.count || 0}</div>
           </CardContent>
         </Card>
       </div>
@@ -379,7 +506,10 @@ export default function BillsPage() {
               className="pl-8"
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={(value) => {
+            setStatusFilter(value);
+            fetchBillsByType(value);
+          }}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
@@ -388,21 +518,88 @@ export default function BillsPage() {
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="paid">Paid</SelectItem>
               <SelectItem value="partially_paid">Partially Paid</SelectItem>
+              <SelectItem value="finalized">Finalized</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            onClick={() => {
+              fetchBillsByType(statusFilter);
+              fetchStats();
+            }}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Refreshing...' : 'Refresh'}
+          </Button>
+          {statusFilter === 'finalized' && (
+            <Button
+              variant="outline"
+              onClick={viewGuestHistory}
+            >
+              <User className="h-4 w-4 mr-1" />
+              View Guest History
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Current Filter Summary */}
+      {statusFilter !== 'all' && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Bills Summary
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {filteredBills.length} bill{filteredBills.length !== 1 ? 's' : ''} found
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold">
+                  ₹{filteredBills.reduce((sum, bill) => sum + bill.totalAmount, 0).toLocaleString()}
+                </div>
+                <div className="text-sm text-muted-foreground">Total Amount</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Bills List */}
       <Card>
         <CardHeader>
-          <CardTitle>Bill Management</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Bill Management</CardTitle>
+            <div className="text-sm text-muted-foreground">
+              {statusFilter === 'all' ? 'All Bills' : `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Bills`} • 
+              {filteredBills.length} bill{filteredBills.length !== 1 ? 's' : ''}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {isLoading ? (
-              <div className="text-center py-8">Loading bills...</div>
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center justify-between p-4 border rounded-lg animate-pulse">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex-1">
+                        <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
+                        <div className="h-3 bg-gray-200 rounded w-48 mb-1"></div>
+                        <div className="h-3 bg-gray-200 rounded w-64"></div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 bg-gray-200 rounded w-16"></div>
+                      <div className="h-8 bg-gray-200 rounded w-20"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : filteredBills.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No bills found matching your criteria.
@@ -427,12 +624,18 @@ export default function BillsPage() {
                         </div>
                         <div className="flex items-center gap-1">
                           <DollarSign className="h-3 w-3" />
-                          Total: ₹{bill.total}
+                          Total: ₹{bill.totalAmount}
                         </div>
                         <div className="flex items-center gap-1">
                           <CreditCard className="h-3 w-3" />
-                          Balance: ₹{bill.balance}
+                          Balance: ₹{bill.balanceAmount}
                         </div>
+                        {bill.isGuestCheckedOut && (
+                          <div className="flex items-center gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Checked Out
+                          </div>
+                        )}
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
                         {bill.items.length} item{bill.items.length > 1 ? 's' : ''} • 
@@ -452,7 +655,7 @@ export default function BillsPage() {
                       <Eye className="h-4 w-4 mr-1" />
                       View
                     </Button>
-                    {bill.status === 'active' && (
+                    {bill.status === 'active' && !bill.isGuestCheckedOut && (
                       <Button
                         variant="default"
                         size="sm"
@@ -461,6 +664,27 @@ export default function BillsPage() {
                         <FileText className="h-4 w-4 mr-1" />
                         Finalize
                       </Button>
+                    )}
+                    {bill.status === 'active' && !bill.isGuestCheckedOut && bill.balanceAmount <= 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleGuestCheckout(bill.guest._id)}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        Checkout Guest
+                      </Button>
+                    )}
+                    {bill.status === 'active' && (
+                      <Select value={bill.status} onValueChange={(value) => handleStatusChange(bill._id, value)}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
                 </div>
@@ -496,6 +720,33 @@ export default function BillsPage() {
                   <p className="text-sm">{selectedBill.guest.name} - Room {selectedBill.room.number}</p>
                 </div>
               </div>
+              
+              {/* Additional Bill Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Check-in Date</Label>
+                  <p className="text-sm">{new Date(selectedBill.checkInDate).toLocaleDateString()}</p>
+                </div>
+                {selectedBill.checkOutDate && (
+                  <div>
+                    <Label className="text-sm font-medium">Check-out Date</Label>
+                    <p className="text-sm">{new Date(selectedBill.checkOutDate).toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+              
+              {selectedBill.finalizedAt && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Finalized At</Label>
+                    <p className="text-sm">{new Date(selectedBill.finalizedAt).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Finalized By</Label>
+                    <p className="text-sm">{selectedBill.finalizedBy || 'System'}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Bill Items */}
               <div>
@@ -715,21 +966,21 @@ export default function BillsPage() {
                     <span>Subtotal:</span>
                     <span>₹{selectedBill.subtotal}</span>
                   </div>
-                  {selectedBill.discount > 0 && (
+                  {selectedBill.discountAmount > 0 && (
                     <div className="flex justify-between text-green-600">
                       <span>Discount:</span>
-                      <span>-₹{selectedBill.discount}</span>
+                      <span>-₹{Math.abs(selectedBill.discountAmount)}</span>
                     </div>
                   )}
-                  {selectedBill.tax > 0 && (
+                  {selectedBill.taxAmount > 0 && (
                     <div className="flex justify-between">
                       <span>Tax:</span>
-                      <span>₹{selectedBill.tax}</span>
+                      <span>₹{selectedBill.taxAmount}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-semibold text-lg border-t pt-2">
                     <span>Total:</span>
-                    <span>₹{selectedBill.total}</span>
+                    <span>₹{selectedBill.totalAmount}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Paid Amount:</span>
@@ -737,10 +988,16 @@ export default function BillsPage() {
                   </div>
                   <div className="flex justify-between font-semibold">
                     <span>Balance:</span>
-                    <span className={selectedBill.balance > 0 ? 'text-red-600' : 'text-green-600'}>
-                      ₹{selectedBill.balance}
+                    <span className={selectedBill.balanceAmount > 0 ? 'text-red-600' : 'text-green-600'}>
+                      ₹{selectedBill.balanceAmount}
                     </span>
                   </div>
+                  {selectedBill.isGuestCheckedOut && (
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Guest Status:</span>
+                      <span>Checked Out</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
