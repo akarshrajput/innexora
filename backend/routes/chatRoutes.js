@@ -1,13 +1,11 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const chatController = require('../controllers/chatController');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const chatController = require("../controllers/chatController");
 
-// Public routes (guest access)
-router.post('/ai', chatController.chatWithAI);
+// Public routes (guest access) - Only external API, no backend AI
+router.post("/ai", chatController.chatWithAI);
+router.post("/chat", chatController.chatWithAI); // Alternative endpoint for guest chat
 
-// Protected routes (staff and above)
-router.use(protect);
-router.post('/manager-assist', authorize('staff', 'manager', 'admin'), chatController.managerAIAssist);
+// No AI functionality in backend - all removed
 
 module.exports = router;

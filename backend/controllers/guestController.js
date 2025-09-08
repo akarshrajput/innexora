@@ -4,6 +4,61 @@ const Bill = require("../models/Bill");
 const { body, validationResult } = require("express-validator");
 const ErrorResponse = require("../utils/errorResponse");
 
+// @desc    Get guest by room access ID (Public route for guest chat)
+// @route   GET /api/guests/room-access/:roomAccessId
+// @access  Public
+exports.getGuestByRoomAccessId = async (req, res, next) => {
+  try {
+    const { roomAccessId } = req.params;
+
+    console.log(`Fetching guest info for room access ID: ${roomAccessId}`);
+
+    // Find the room by access ID
+    const room = await Room.findOne({ roomAccessId: roomAccessId });
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid room access code",
+      });
+    }
+
+    // Find active guest in this room
+    const guest = await Guest.findOne({
+      roomNumber: room.number,
+      status: "checked_in",
+    }).populate({
+      path: "room",
+      select: "number type floor price",
+      model: "Room",
+    });
+
+    if (!guest) {
+      return res.status(200).json({
+        success: true,
+        message: "This room currently has no guest checked in",
+        data: null,
+        roomInfo: {
+          type: room.type,
+          floor: room.floor,
+        },
+      });
+    }
+
+    console.log(`Found guest: ${guest.name} in room ${room.number}`);
+
+    res.status(200).json({
+      success: true,
+      data: guest,
+    });
+  } catch (error) {
+    console.error("Error fetching guest by room access ID:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 // @desc    Get guest by room number (Public route for guest chat)
 // @route   GET /api/guests/room/:roomNumber
 // @access  Public

@@ -1,92 +1,146 @@
 const axios = require("axios");
 const Ticket = require("../models/Ticket");
 const Room = require("../models/Room");
+const Guest = require("../models/Guest");
 
 // @desc    Handle AI chat for guests using hotel classifier
 // @route   POST /api/chat/ai
 // @access  Public
 exports.chatWithAI = async (req, res) => {
   try {
-    const { message, guestInfo, conversationHistory = [] } = req.body;
+    console.log("🔍 Received request body:", JSON.stringify(req.body, null, 2));
+    const {
+      message,
+      guestInfo,
+      guestId,
+      roomNumber,
+      conversationHistory = [],
+    } = req.body;
 
-    if (!message || !guestInfo) {
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        message: "Message is required",
+      });
+    }
+
+    console.log("📝 Extracted values:", {
+      message,
+      guestInfo,
+      guestId,
+      roomNumber,
+    });
+
+    // Handle both old format (guestInfo object) and new format (separate fields)
+    let guestData;
+    if (guestInfo) {
+      guestData = guestInfo;
+    } else if (guestId && roomNumber) {
+      // Fetch guest details from database
+      const guest = await Guest.findById(guestId);
+      if (!guest) {
+        return res.status(404).json({
+          success: false,
+          message: "Guest not found",
+        });
+      }
+
+      guestData = {
+        _id: guestId,
+        guestName: guest.name,
+        roomNumber: roomNumber,
+        email: guest.email,
+        phone: guest.phone,
+      };
+    } else {
       return res.status(400).json({
         success: false,
         message: "Message and guest info are required",
       });
     }
 
-    // Call the hotel classifier API
+    console.log(
+      `💬 Chat request from ${guestData.guestName} in room ${guestData.roomNumber}`
+    );
+    console.log(`Message: "${message}"`);
+
     try {
+      // Prepare the correct payload for the hotel classifier API
+      const classifierPayload = {
+        guest_message: message,
+        room_number: guestData.roomNumber,
+      };
+
+      console.log(
+        "🚀 Sending to classifier API:",
+        JSON.stringify(classifierPayload, null, 2)
+      );
+
+      // Call the hotel classifier API - NO FALLBACK, only use external API
       const classifierResponse = await axios.post(
         "https://hotel-classifier-api.onrender.com/classify",
+        classifierPayload,
         {
-          guest_message: message,
-          room_number: guestInfo.roomNumber,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 15000, // 15 second timeout
         }
       );
 
-      const classifierData = classifierResponse.data;
+      console.log(
+        "✅ Classifier API response:",
+        JSON.stringify(classifierResponse.data, null, 2)
+      );
 
-      // Send the classifier's reply as the chat response
+      const {
+        should_create_ticket,
+        categories,
+        reply,
+        confidence,
+        reasoning,
+        suggested_priority,
+        estimated_completion_time,
+      } = classifierResponse.data;
+
+      // Send response to guest with the AI reply
       res.json({
         success: true,
-        message: classifierData.reply,
-        shouldCreateTicket: classifierData.should_create_ticket,
-        categories: classifierData.categories || [],
-        confidence: classifierData.confidence,
-        reasoning: classifierData.reasoning,
-        suggestedPriority: classifierData.suggested_priority,
-        estimatedCompletionTime: classifierData.estimated_completion_time,
+        response: reply,
+        shouldCreateTicket: should_create_ticket,
+        categories,
+        confidence,
+        reasoning,
+        estimatedCompletionTime: estimated_completion_time,
         timestamp: new Date(),
-        conversationId: `${guestInfo.roomNumber}-${Date.now()}`,
+        conversationId: `${guestData.roomNumber}-${Date.now()}`,
       });
 
-      // If should create ticket, automatically create tickets for each category
-      if (classifierData.should_create_ticket && classifierData.categories) {
+      // Create tickets ONLY if the external API determined they should be created
+      if (should_create_ticket && categories && categories.length > 0) {
+        console.log(
+          `🎫 Creating ${categories.length} tickets for room ${guestData.roomNumber}`
+        );
+
         setTimeout(async () => {
           await createTicketsFromCategories(
-            classifierData.categories,
-            guestInfo,
+            categories,
+            guestData,
             message,
             req
           );
-        }, 100); // Small delay to ensure response is sent first
+        }, 100);
       }
-    } catch (classifierError) {
-      console.error("Hotel classifier API error:", classifierError);
+    } catch (apiError) {
+      console.error("❌ Hotel classifier API error:", apiError.message);
 
-      // Simple fallback response when API is unavailable
-      res.json({
-        success: true,
-        message: `Thank you for reaching out, ${guestInfo.guestName}! I understand you need assistance. Let me connect you with our staff who can help you right away.`,
-        shouldCreateTicket: true,
-        categories: [
-          {
-            category: "general",
-            message: message,
-            urgency: "medium",
-          },
-        ],
-        timestamp: new Date(),
-        conversationId: `${guestInfo.roomNumber}-${Date.now()}`,
+      // NO FALLBACK - Return error if external API fails
+      res.status(503).json({
+        success: false,
+        message:
+          "Chat service is temporarily unavailable. Please try again later or contact the front desk directly.",
+        error: "External AI service unavailable",
       });
-
-      // Create a general ticket as fallback
-      setTimeout(async () => {
-        await createTicketsFromCategories(
-          [
-            {
-              category: "general",
-              message: message,
-              urgency: "medium",
-            },
-          ],
-          guestInfo,
-          message,
-          req
-        );
-      }, 100);
     }
   } catch (error) {
     console.error("Chat AI error:", error);
@@ -187,50 +241,32 @@ exports.createGuestTicket = async (req, res) => {
       });
     }
 
-    // Format conversation history for professional display
-    const formattedConversation = conversationHistory.map((msg) => ({
-      content: msg.content,
-      sender: msg.role === "user" ? "guest" : "ai_assistant",
-      senderName: msg.role === "user" ? guestInfo.name : "AI Assistant",
-      timestamp: msg.timestamp || new Date().toISOString(),
-    }));
-
-    // Create summary for the ticket
-    const conversationSummary = `Guest Chat Summary:
-${conversationHistory
-  .map(
-    (msg) =>
-      `${msg.role === "user" ? guestInfo.name : "AI Assistant"}: ${msg.content}`
-  )
-  .join("\n")}
-
-Current Request: ${initialMessage}`;
-
-    // Create the ticket with conversation history
+    // Create the ticket
     const ticket = await Ticket.create({
       room: room._id,
-      roomNumber: roomNumber,
-      guestInfo: {
-        name: guestInfo.name,
-        email: guestInfo.email || "",
-        phone: guestInfo.phone || "",
-      },
+      roomNumber,
+      guestInfo,
       status: "raised",
-      priority: priority,
-      subject: `Service Request - Room ${roomNumber}`,
+      priority,
+      category: "general",
+      subject: `Guest inquiry - ${guestInfo.name}`,
       messages: [
-        ...formattedConversation,
         {
-          content: `🎫 Service Request Created\n\n${initialMessage}`,
-          sender: "system",
-          senderName: "System",
+          content: initialMessage,
+          sender: "guest",
+          senderName: guestInfo.name,
           timestamp: new Date().toISOString(),
         },
+        ...conversationHistory.map((msg, index) => ({
+          content: msg.content,
+          sender: msg.role === "user" ? "guest" : "staff",
+          senderName: msg.role === "user" ? guestInfo.name : "AI Assistant",
+          timestamp: new Date(
+            Date.now() - (conversationHistory.length - index) * 1000
+          ).toISOString(),
+        })),
       ],
     });
-
-    // Populate the ticket with room details
-    await ticket.populate("room");
 
     // Emit real-time notification to managers
     if (req.app && req.app.get("io")) {
@@ -238,8 +274,8 @@ Current Request: ${initialMessage}`;
       io.emit("newTicket", {
         ticket,
         notification: {
-          title: "New Service Request",
-          message: `${guestInfo.name} from Room ${roomNumber} needs assistance`,
+          title: "New Guest Ticket",
+          message: `${guestInfo.name} from Room ${roomNumber}`,
           priority: priority,
           timestamp: new Date().toISOString(),
         },
@@ -248,53 +284,17 @@ Current Request: ${initialMessage}`;
 
     res.status(201).json({
       success: true,
-      message: "Service request created successfully",
       data: ticket,
+      message: "Ticket created successfully",
     });
   } catch (error) {
     console.error("Create guest ticket error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create service request",
+      message: "Failed to create ticket",
     });
   }
 };
 
-// @desc    Get AI suggestions for manager responses
-// @route   POST /api/chat/manager-assist
-// @access  Private/Manager
-exports.managerAIAssist = async (req, res) => {
-  try {
-    const { ticketId, conversationHistory, requestType } = req.body;
-
-    if (!ticketId || !conversationHistory) {
-      return res.status(400).json({
-        success: false,
-        message: "Ticket ID and conversation history are required",
-      });
-    }
-
-    const ticket = await Ticket.findById(ticketId).populate("room");
-    if (!ticket) {
-      return res.status(404).json({
-        success: false,
-        message: "Ticket not found",
-      });
-    }
-
-    // Simple fallback suggestion without external AI
-    const fallbackSuggestion = `Thank you for bringing this to our attention, ${ticket.guestInfo.name}. I understand your concern and we'll address this promptly. Our team will take care of this for you within the next 30 minutes. Is there anything else I can help you with?`;
-
-    res.json({
-      success: true,
-      suggestion: fallbackSuggestion,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    console.error("Manager AI assist error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get AI assistance",
-    });
-  }
-};
+// @desc    Manager AI Assistant - REMOVED
+// No AI functionality in backend - only external API

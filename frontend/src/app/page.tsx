@@ -1,16 +1,25 @@
-'use client';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { Loader2, Hotel, Users, MessageSquare, Shield, LogIn, ArrowRight } from 'lucide-react';
+"use client";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import {
+  Loader2,
+  Hotel,
+  Users,
+  MessageSquare,
+  Shield,
+  LogIn,
+} from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
-  const [roomNumber, setRoomNumber] = useState('');
-  const [guestName, setGuestName] = useState('');
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -25,13 +34,6 @@ export default function Home() {
     );
   }
 
-  const handleGuestAccess = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (roomNumber) {
-      router.push(`/hotel/${roomNumber}`);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -39,7 +41,7 @@ export default function Home() {
         <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-3">
             <Hotel className="h-8 w-8" />
-            <span className="text-2xl font-bold">HotelFlow</span>
+            <span className="text-2xl font-bold">Innexora</span>
           </div>
           <p className="text-sm text-muted-foreground hidden md:block">
             Modern hotel management made simple
@@ -50,16 +52,20 @@ export default function Home() {
       {/* Main Content */}
       <main className="container mx-auto max-w-6xl px-4 py-16">
         <div className="text-center mb-16">
-          <h1 className="text-4xl font-bold mb-4">
-            Welcome to HotelFlow
-          </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Streamline your hotel operations with intelligent guest services and staff management tools
+          <h1 className="text-4xl font-bold mb-4">Welcome to Innexora</h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-4">
+            Streamline your hotel operations with intelligent guest services and
+            staff management tools
           </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
+            <p className="text-sm text-blue-800">
+              <strong>Guests:</strong> Scan the QR code in your room to access
+              chat and room services directly
+            </p>
+          </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-
+        <div className="max-w-md mx-auto">
           {/* Manager Access Card */}
           <Card>
             <CardHeader className="text-center">
@@ -68,7 +74,8 @@ export default function Home() {
               </div>
               <CardTitle className="text-2xl">Manager Access</CardTitle>
               <CardDescription>
-                Access the management dashboard to oversee hotel operations, manage rooms, and handle guest requests
+                Access the management dashboard to oversee hotel operations,
+                manage rooms, and handle guest requests
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -86,57 +93,13 @@ export default function Home() {
                   <span>Room status & housekeeping</span>
                 </div>
               </div>
-              <Button 
-                className="w-full" 
-                onClick={() => router.push('/auth/login')}
+              <Button
+                className="w-full"
+                onClick={() => router.push("/auth/login")}
               >
                 <LogIn className="mr-2 h-4 w-4" />
                 Login to Dashboard
               </Button>
-            </CardContent>
-          </Card>
-
-          {/* Guest Access Card */}
-          <Card>
-            <CardHeader className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg border">
-                <Users className="h-8 w-8" />
-              </div>
-              <CardTitle className="text-2xl">Guest Services</CardTitle>
-              <CardDescription>
-                Enter your room number to access AI assistant and hotel services
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleGuestAccess} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="roomNumber">Room Number</Label>
-                  <Input
-                    id="roomNumber"
-                    placeholder="e.g., 101, 205, 312"
-                    required
-                    value={roomNumber}
-                    onChange={(e) => setRoomNumber(e.target.value)}
-                  />
-                </div>
-                <Button type="submit" className="w-full">
-                  <ArrowRight className="mr-2 h-4 w-4" />
-                  Access Guest Services
-                </Button>
-              </form>
-              
-              <div className="mt-6 pt-4 border-t">
-                <div className="grid grid-cols-2 gap-4 text-center text-sm text-muted-foreground">
-                  <div>
-                    <MessageSquare className="mx-auto mb-1 h-4 w-4" />
-                    <p>AI Assistant</p>
-                  </div>
-                  <div>
-                    <Hotel className="mx-auto mb-1 h-4 w-4" />
-                    <p>Room Services</p>
-                  </div>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -148,10 +111,11 @@ export default function Home() {
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center gap-3 mb-4 md:mb-0">
               <Hotel className="h-6 w-6" />
-              <span className="text-lg font-semibold">HotelFlow</span>
+              <span className="text-lg font-semibold">Innexora</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} HotelFlow. Streamlining hotel operations.
+              © {new Date().getFullYear()} Innexora. Streamlining hotel
+              operations.
             </p>
           </div>
         </div>
@@ -159,4 +123,3 @@ export default function Home() {
     </div>
   );
 }
-

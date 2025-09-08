@@ -4,7 +4,9 @@ const guestController = require("../controllers/guestController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
 // Public routes (for guest access)
-router.route("/room/:roomNumber").get(guestController.getGuestByRoom);
+router
+  .route("/room-access/:roomAccessId")
+  .get(guestController.getGuestByRoomAccessId);
 
 // Protected routes (require authentication)
 router.use(protect);
