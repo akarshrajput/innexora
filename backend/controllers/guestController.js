@@ -1,32 +1,84 @@
-const Guest = require('../models/Guest');
-const Room = require('../models/Room');
-const Bill = require('../models/Bill');
-const { body, validationResult } = require('express-validator');
-const ErrorResponse = require('../utils/errorResponse');
+const Guest = require("../models/Guest");
+const Room = require("../models/Room");
+const Bill = require("../models/Bill");
+const { body, validationResult } = require("express-validator");
+const ErrorResponse = require("../utils/errorResponse");
+
+// @desc    Get guest by room number (Public route for guest chat)
+// @route   GET /api/guests/room/:roomNumber
+// @access  Public
+exports.getGuestByRoom = async (req, res, next) => {
+  try {
+    const { roomNumber } = req.params;
+
+    console.log(`Fetching guest info for room: ${roomNumber}`);
+
+    // Find the room first
+    const room = await Room.findOne({ number: roomNumber });
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: "Room not found",
+      });
+    }
+
+    // Find active guest in this room
+    const guest = await Guest.findOne({
+      roomNumber: roomNumber,
+      status: "checked_in",
+    }).populate({
+      path: "room",
+      select: "number type floor price",
+      model: "Room",
+    });
+
+    if (!guest) {
+      return res.status(404).json({
+        success: false,
+        message: "No active guest found in this room",
+      });
+    }
+
+    console.log(`Found guest: ${guest.name} in room ${roomNumber}`);
+
+    res.status(200).json({
+      success: true,
+      data: guest,
+    });
+  } catch (error) {
+    console.error("Error fetching guest by room:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch guest information",
+    });
+  }
+};
 
 // @desc    Get all guests
 // @route   GET /api/guests
 // @access  Private/Manager
 exports.getGuests = async (req, res, next) => {
   try {
-    console.log(`Fetching all guests for manager: ${req.user?.email || 'unknown'}`);
+    console.log(
+      `Fetching all guests for manager: ${req.user?.email || "unknown"}`
+    );
     const { status, roomNumber, search } = req.query;
-    
+
     // Build query - no filters by default to show all guests
     const query = {};
-    
+
     if (status) query.status = status;
     if (roomNumber) query.roomNumber = roomNumber;
-    
-    console.log('Query parameters:', { query, status, roomNumber, search });
-    
+
+    console.log("Query parameters:", { query, status, roomNumber, search });
+
     // Add search functionality
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { 'room.number': { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { "room.number": { $regex: search, $options: "i" } },
       ];
     }
 
@@ -37,15 +89,15 @@ exports.getGuests = async (req, res, next) => {
 
     // Get total count for pagination
     const total = await Guest.countDocuments(query);
-    
+
     console.log(`Found ${total} guests matching query`);
 
     // Find all guests with room population
     const guests = await Guest.find(query)
       .populate({
-        path: 'room',
-        select: 'number type floor price',
-        model: 'Room'
+        path: "room",
+        select: "number type floor price",
+        model: "Room",
       })
       .sort({ checkInDate: -1 })
       .skip(skip)
@@ -53,27 +105,29 @@ exports.getGuests = async (req, res, next) => {
       .lean(); // Convert to plain JavaScript objects
 
     // Calculate stay duration for each guest
-    const guestsWithDuration = guests.map(guest => {
+    const guestsWithDuration = guests.map((guest) => {
       const checkInDate = new Date(guest.checkInDate);
       const checkOutDate = new Date(guest.checkOutDate);
-      const stayDuration = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
-      
+      const stayDuration = Math.ceil(
+        (checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)
+      );
+
       return {
         ...guest,
         stayDuration,
         // Ensure room data is properly formatted
         room: guest.room || {
           _id: guest.room, // In case population didn't work, keep the original ID
-          number: guest.roomNumber || 'N/A',
-          type: 'Unknown',
-          floor: 'N/A',
-          price: 0
-        }
+          number: guest.roomNumber || "N/A",
+          type: "Unknown",
+          floor: "N/A",
+          price: 0,
+        },
       };
     });
 
     console.log(`Returning ${guestsWithDuration.length} guests with room data`);
-    
+
     res.status(200).json({
       success: true,
       data: guestsWithDuration,
@@ -81,12 +135,12 @@ exports.getGuests = async (req, res, next) => {
         total,
         pages: Math.ceil(total / limit),
         current: page,
-        limit
-      }
+        limit,
+      },
     });
   } catch (error) {
-    console.error('Get guests error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guests error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -95,25 +149,27 @@ exports.getGuests = async (req, res, next) => {
 // @access  Private/Manager
 exports.getGuest = async (req, res, next) => {
   try {
-    console.log(`Fetching guest ${req.params.id} for manager: ${req.user.email}`);
+    console.log(
+      `Fetching guest ${req.params.id} for manager: ${req.user.email}`
+    );
     const guest = await Guest.findOne({
       _id: req.params.id,
-      isActive: true
+      isActive: true,
     })
-    .populate('room', 'number type floor price amenities')
-    .populate('currentBill');
+      .populate("room", "number type floor price amenities")
+      .populate("currentBill");
 
     if (!guest) {
-      return next(new ErrorResponse('Guest not found', 404));
+      return next(new ErrorResponse("Guest not found", 404));
     }
 
     res.status(200).json({
       success: true,
-      data: guest
+      data: guest,
     });
   } catch (error) {
-    console.error('Get guest error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -123,45 +179,47 @@ exports.getGuest = async (req, res, next) => {
 exports.checkInGuest = async (req, res, next) => {
   try {
     const { roomId, ...guestData } = req.body;
-    
+
     // Verify room exists and is available
     const room = await Room.findOne({
       _id: roomId,
-      status: 'available',
-      isActive: true
+      status: "available",
+      isActive: true,
     });
-    
+
     if (!room) {
       console.log(`Room ${roomId} not found or not available`);
-      return next(new ErrorResponse('Room not available or not found', 404));
+      return next(new ErrorResponse("Room not available or not found", 404));
     }
 
     // Add room details to guest data
     guestData.room = roomId;
     guestData.roomNumber = room.number;
-    guestData.status = 'checked_in';
-    
-    console.log('Creating guest with data:', {
+    guestData.status = "checked_in";
+
+    console.log("Creating guest with data:", {
       ...guestData,
       room: roomId,
-      roomNumber: room.number
+      roomNumber: room.number,
     });
 
     // Create guest
     const guest = await Guest.create(guestData);
 
     // Update room status and assign guest
-    room.status = 'occupied';
+    room.status = "occupied";
     room.currentGuest = guest._id;
     await room.save();
 
     // Generate a unique bill number
     const billNumber = `BIL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    
+
     // Calculate room charges based on stay duration
     const checkInDate = new Date(guest.checkInDate);
     const checkOutDate = new Date(guest.checkOutDate);
-    const numberOfNights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
+    const numberOfNights = Math.ceil(
+      (checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)
+    );
     const roomChargePerNight = room.price || 0;
     const totalRoomCharge = numberOfNights * roomChargePerNight;
 
@@ -173,16 +231,18 @@ exports.checkInGuest = async (req, res, next) => {
       guestName: guest.name,
       checkInDate: guest.checkInDate,
       checkOutDate: guest.checkOutDate,
-      status: 'active',
-      items: [{
-        type: 'room_charge',
-        description: `Room ${room.number} - ${numberOfNights} night(s)`,
-        amount: totalRoomCharge,
-        quantity: numberOfNights,
-        unitPrice: roomChargePerNight,
-        addedBy: 'System',
-        date: new Date()
-      }],
+      status: "active",
+      items: [
+        {
+          type: "room_charge",
+          description: `Room ${room.number} - ${numberOfNights} night(s)`,
+          amount: totalRoomCharge,
+          quantity: numberOfNights,
+          unitPrice: roomChargePerNight,
+          addedBy: "System",
+          date: new Date(),
+        },
+      ],
       payments: [],
       totalAmount: totalRoomCharge,
       taxAmount: 0,
@@ -190,36 +250,36 @@ exports.checkInGuest = async (req, res, next) => {
       netAmount: totalRoomCharge,
       balance: totalRoomCharge,
       billNumber: billNumber,
-      isActive: true
+      isActive: true,
     };
-    
-    console.log('Creating bill with data:', billData);
+
+    console.log("Creating bill with data:", billData);
     const bill = await Bill.create(billData);
 
     // Populate guest data for response
-    await guest.populate('room', 'number type floor price amenities');
+    await guest.populate("room", "number type floor price amenities");
 
     res.status(201).json({
       success: true,
       data: {
         guest,
-        bill
-      }
+        bill,
+      },
     });
   } catch (error) {
-    console.error('Check-in guest error:', error);
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(val => val.message);
+    console.error("Check-in guest error:", error);
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((val) => val.message);
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: messages
+        message: "Validation error",
+        errors: messages,
       });
     }
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -234,19 +294,19 @@ exports.checkoutGuest = async (req, res, next) => {
     if (!checkedOutBy) {
       return res.status(400).json({
         success: false,
-        message: 'Checked out by is required'
+        message: "Checked out by is required",
       });
     }
 
     const guest = await Guest.findById(req.params.id);
     if (!guest) {
-      return next(new ErrorResponse('Guest not found', 404));
+      return next(new ErrorResponse("Guest not found", 404));
     }
 
-    if (guest.status !== 'checked_in') {
+    if (guest.status !== "checked_in") {
       return res.status(400).json({
         success: false,
-        message: 'Guest is not currently checked in'
+        message: "Guest is not currently checked in",
       });
     }
 
@@ -255,12 +315,12 @@ exports.checkoutGuest = async (req, res, next) => {
     if (!checkoutInfo.canCheckOut) {
       return res.status(400).json({
         success: false,
-        message: `Cannot check out guest with outstanding balance of ₹${checkoutInfo.balanceAmount}. Please collect payment first.`
+        message: `Cannot check out guest with outstanding balance of ₹${checkoutInfo.balanceAmount}. Please collect payment first.`,
       });
     }
 
     // Update guest status to checked_out
-    guest.status = 'checked_out';
+    guest.status = "checked_out";
     guest.actualCheckOutDate = new Date();
     guest.checkedOutBy = checkedOutBy;
     if (checkoutNotes) guest.notes = checkoutNotes;
@@ -269,44 +329,52 @@ exports.checkoutGuest = async (req, res, next) => {
     await guest.save();
 
     // Mark bill as guest checked out (this will move it to guest history)
-    const Bill = require('../models/Bill');
+    const Bill = require("../models/Bill");
     await Bill.markGuestCheckedOut(guest._id);
 
     // Update room status to cleaning immediately
-    const Room = require('../models/Room');
-    await Room.findByIdAndUpdate(guest.room, { 
-      status: 'cleaning',
+    const Room = require("../models/Room");
+    await Room.findByIdAndUpdate(guest.room, {
+      status: "cleaning",
       currentGuest: null,
-      lastCleanedAt: new Date()
+      lastCleanedAt: new Date(),
     });
 
     // Schedule room to become available after 2 hours
-    setTimeout(async () => {
-      try {
-        await Room.findByIdAndUpdate(guest.room, { 
-          status: 'available',
-          currentGuest: null
-        });
-        console.log(`✅ Room ${guest.roomNumber} is now available after cleaning`);
-      } catch (error) {
-        console.error(`❌ Error updating room ${guest.roomNumber} to available:`, error);
-      }
-    }, 2 * 60 * 60 * 1000); // 2 hours
+    setTimeout(
+      async () => {
+        try {
+          await Room.findByIdAndUpdate(guest.room, {
+            status: "available",
+            currentGuest: null,
+          });
+          console.log(
+            `✅ Room ${guest.roomNumber} is now available after cleaning`
+          );
+        } catch (error) {
+          console.error(
+            `❌ Error updating room ${guest.roomNumber} to available:`,
+            error
+          );
+        }
+      },
+      2 * 60 * 60 * 1000
+    ); // 2 hours
 
     // Populate for response
     await guest.populate([
-      { path: 'room', select: 'number type floor' },
-      { path: 'hotel', select: 'name' }
+      { path: "room", select: "number type floor" },
+      { path: "hotel", select: "name" },
     ]);
 
     res.status(200).json({
       success: true,
-      message: 'Guest checked out successfully',
-      data: guest
+      message: "Guest checked out successfully",
+      data: guest,
     });
   } catch (error) {
-    console.error('Checkout guest error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Checkout guest error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -316,53 +384,59 @@ exports.checkoutGuest = async (req, res, next) => {
 exports.updateGuest = async (req, res, next) => {
   try {
     console.log(`Updating guest ${req.params.id}:`, req.body);
-    
+
     let guest = await Guest.findById(req.params.id);
     if (!guest) {
-      return next(new ErrorResponse(`Guest not found with id of ${req.params.id}`, 404));
+      return next(
+        new ErrorResponse(`Guest not found with id of ${req.params.id}`, 404)
+      );
     }
-    
+
     // If updating room, check availability
     if (req.body.room && req.body.room !== guest.room.toString()) {
       const newRoom = await Room.findById(req.body.room);
       if (!newRoom) {
-        return next(new ErrorResponse('New room not found', 404));
+        return next(new ErrorResponse("New room not found", 404));
       }
-      
-      if (newRoom.status !== 'available') {
-        return next(new ErrorResponse('New room is not available', 400));
+
+      if (newRoom.status !== "available") {
+        return next(new ErrorResponse("New room is not available", 400));
       }
-      
+
       // Check if new room is occupied by another guest
       const existingGuest = await Guest.findOne({
         room: req.body.room,
-        status: 'checked_in',
-        _id: { $ne: req.params.id }
+        status: "checked_in",
+        _id: { $ne: req.params.id },
       });
-      
+
       if (existingGuest) {
-        return next(new ErrorResponse('New room is already occupied by another guest', 400));
+        return next(
+          new ErrorResponse(
+            "New room is already occupied by another guest",
+            400
+          )
+        );
       }
     }
-    
+
     // Update guest
-    guest = await Guest.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).populate({
-      path: 'room',
-      select: 'number type floor price',
-      model: 'Room'
+    guest = await Guest.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    }).populate({
+      path: "room",
+      select: "number type floor price",
+      model: "Room",
     });
-    
+
     res.status(200).json({
       success: true,
-      data: guest
+      data: guest,
     });
   } catch (error) {
-    console.error('Update guest error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Update guest error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -373,23 +447,30 @@ exports.deleteGuest = async (req, res, next) => {
   try {
     const guest = await Guest.findById(req.params.id);
     if (!guest) {
-      return next(new ErrorResponse(`Guest not found with id of ${req.params.id}`, 404));
+      return next(
+        new ErrorResponse(`Guest not found with id of ${req.params.id}`, 404)
+      );
     }
-    
+
     // Check if guest is currently checked in
-    if (guest.status === 'checked_in') {
-      return next(new ErrorResponse('Cannot delete a guest who is currently checked in', 400));
+    if (guest.status === "checked_in") {
+      return next(
+        new ErrorResponse(
+          "Cannot delete a guest who is currently checked in",
+          400
+        )
+      );
     }
-    
+
     await Guest.findByIdAndDelete(req.params.id);
-    
+
     res.status(200).json({
       success: true,
-      data: {}
+      data: {},
     });
   } catch (error) {
-    console.error('Delete guest error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Delete guest error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -400,14 +481,14 @@ exports.getGuestByRoom = async (req, res, next) => {
   try {
     const guest = await Guest.findOne({
       roomNumber: req.params.roomNumber,
-      status: 'checked_in'
-    }).populate('room', 'number type floor');
+      status: "checked_in",
+    }).populate("room", "number type floor");
 
     if (!guest) {
       return res.status(200).json({
         success: true,
         data: null,
-        message: 'No active guest found for this room'
+        message: "No active guest found for this room",
       });
     }
 
@@ -419,16 +500,16 @@ exports.getGuestByRoom = async (req, res, next) => {
       room: guest.room,
       checkInDate: guest.checkInDate,
       checkOutDate: guest.checkOutDate,
-      status: guest.status
+      status: guest.status,
     };
 
     res.status(200).json({
       success: true,
-      data: guestInfo
+      data: guestInfo,
     });
   } catch (error) {
-    console.error('Get guest by room error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest by room error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -440,24 +521,27 @@ exports.getGuestStats = async (req, res, next) => {
     const stats = await Guest.aggregate([
       {
         $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
     ]);
 
-    const formattedStats = stats.reduce((acc, curr) => {
-      acc[curr._id] = curr.count;
-      return acc;
-    }, { checked_in: 0, checked_out: 0, cancelled: 0, no_show: 0 });
+    const formattedStats = stats.reduce(
+      (acc, curr) => {
+        acc[curr._id] = curr.count;
+        return acc;
+      },
+      { checked_in: 0, checked_out: 0, cancelled: 0, no_show: 0 }
+    );
 
     // Get current occupancy
     const occupiedRooms = await Room.countDocuments({
-      status: 'occupied'
+      status: "occupied",
     });
 
     const totalRooms = await Room.countDocuments({
-      isActive: true
+      isActive: true,
     });
 
     res.status(200).json({
@@ -466,12 +550,13 @@ exports.getGuestStats = async (req, res, next) => {
         ...formattedStats,
         occupiedRooms,
         totalRooms,
-        occupancyRate: totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0
-      }
+        occupancyRate:
+          totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0,
+      },
     });
   } catch (error) {
-    console.error('Get guest stats error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest stats error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -485,11 +570,11 @@ exports.getActiveGuests = async (req, res, next) => {
     res.status(200).json({
       success: true,
       count: guests.length,
-      data: guests
+      data: guests,
     });
   } catch (error) {
-    console.error('Get active guests error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get active guests error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -499,11 +584,11 @@ exports.getActiveGuests = async (req, res, next) => {
 exports.getGuestHistory = async (req, res, next) => {
   try {
     const { status, roomNumber, guestName, startDate, endDate } = req.query;
-    
-    let query = { status: { $in: ['checked_out', 'cancelled', 'no_show'] } };
-    
+
+    let query = { status: { $in: ["checked_out", "cancelled", "no_show"] } };
+
     if (roomNumber) query.roomNumber = roomNumber;
-    if (guestName) query.name = { $regex: guestName, $options: 'i' };
+    if (guestName) query.name = { $regex: guestName, $options: "i" };
     if (startDate || endDate) {
       query.checkOutDate = {};
       if (startDate) query.checkOutDate.$gte = new Date(startDate);
@@ -511,18 +596,18 @@ exports.getGuestHistory = async (req, res, next) => {
     }
 
     const guests = await Guest.find(query)
-      .populate('room', 'number type floor')
-      .populate('hotel', 'name')
+      .populate("room", "number type floor")
+      .populate("hotel", "name")
       .sort({ checkOutDate: -1 });
 
     res.status(200).json({
       success: true,
       count: guests.length,
-      data: guests
+      data: guests,
     });
   } catch (error) {
-    console.error('Get guest history error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest history error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -532,14 +617,14 @@ exports.getGuestHistory = async (req, res, next) => {
 exports.getGuestCheckoutStatus = async (req, res, next) => {
   try {
     const checkoutInfo = await Guest.canCheckOut(req.params.id);
-    
+
     res.status(200).json({
       success: true,
-      data: checkoutInfo
+      data: checkoutInfo,
     });
   } catch (error) {
-    console.error('Get guest checkout status error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest checkout status error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -548,186 +633,182 @@ exports.getGuestCheckoutStatus = async (req, res, next) => {
 // @access  Private/Manager
 exports.createGuest = async (req, res, next) => {
   try {
-    console.log('Creating new guest:', req.body);
-    
+    console.log("Creating new guest:", req.body);
+
     // Check if room is available
     const room = await Room.findById(req.body.room);
     if (!room) {
-      return next(new ErrorResponse('Room not found', 404));
+      return next(new ErrorResponse("Room not found", 404));
     }
-    
-    if (room.status !== 'available') {
-      return next(new ErrorResponse('Room is not available for check-in', 400));
+
+    if (room.status !== "available") {
+      return next(new ErrorResponse("Room is not available for check-in", 400));
     }
-    
+
     // Check if room is already assigned to another guest
     const existingGuest = await Guest.findOne({
       room: req.body.room,
-      status: 'checked_in'
+      status: "checked_in",
     });
-    
+
     if (existingGuest) {
-      return next(new ErrorResponse('Room is already occupied by another guest', 400));
+      return next(
+        new ErrorResponse("Room is already occupied by another guest", 400)
+      );
     }
-    
+
     // Create guest data
     const guestData = {
       ...req.body,
-      status: 'checked_in',
+      status: "checked_in",
       checkInDate: new Date(req.body.checkInDate),
-      checkOutDate: new Date(req.body.checkOutDate)
+      checkOutDate: new Date(req.body.checkOutDate),
     };
-    
+
     const guest = await Guest.create(guestData);
-    
+
     // Populate room information
     await guest.populate({
-      path: 'room',
-      select: 'number type floor price',
-      model: 'Room'
+      path: "room",
+      select: "number type floor price",
+      model: "Room",
     });
-    
-    console.log('Guest created successfully:', guest._id);
-    
+
+    console.log("Guest created successfully:", guest._id);
+
     res.status(201).json({
       success: true,
-      data: guest
+      data: guest,
     });
   } catch (error) {
-    console.error('Create guest error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Create guest error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
 // Validation middleware for guest
 exports.validateGuestData = [
-  body('name')
+  body("name")
     .trim()
     .notEmpty()
-    .withMessage('Guest name is required')
+    .withMessage("Guest name is required")
     .isLength({ min: 2, max: 100 })
-    .withMessage('Name must be between 2 and 100 characters'),
-  
-  body('email')
+    .withMessage("Name must be between 2 and 100 characters"),
+
+  body("email")
     .trim()
     .notEmpty()
-    .withMessage('Email is required')
+    .withMessage("Email is required")
     .isEmail()
-    .withMessage('Invalid email format')
+    .withMessage("Invalid email format")
     .normalizeEmail(),
-  
-  body('phone')
+
+  body("phone")
     .trim()
     .notEmpty()
-    .withMessage('Phone number is required')
+    .withMessage("Phone number is required")
     .matches(/^[\+]?[1-9][\d]{0,15}$/)
-    .withMessage('Invalid phone number format'),
-  
-  body('room')
+    .withMessage("Invalid phone number format"),
+
+  body("room")
     .notEmpty()
-    .withMessage('Room assignment is required')
+    .withMessage("Room assignment is required")
     .isMongoId()
-    .withMessage('Invalid room ID'),
-  
-  body('checkInDate')
+    .withMessage("Invalid room ID"),
+
+  body("checkInDate")
     .notEmpty()
-    .withMessage('Check-in date is required')
+    .withMessage("Check-in date is required")
     .isISO8601()
-    .withMessage('Invalid check-in date format'),
-  
-  body('checkOutDate')
+    .withMessage("Invalid check-in date format"),
+
+  body("checkOutDate")
     .notEmpty()
-    .withMessage('Check-out date is required')
+    .withMessage("Check-out date is required")
     .isISO8601()
-    .withMessage('Invalid check-out date format')
+    .withMessage("Invalid check-out date format")
     .custom((value, { req }) => {
       const checkIn = new Date(req.body.checkInDate);
       const checkOut = new Date(value);
       if (checkOut <= checkIn) {
-        throw new Error('Check-out date must be after check-in date');
+        throw new Error("Check-out date must be after check-in date");
       }
       return true;
     }),
-  
-  body('adults')
+
+  body("adults")
     .optional()
     .isInt({ min: 1, max: 10 })
-    .withMessage('Number of adults must be between 1 and 10'),
-  
-  body('children')
+    .withMessage("Number of adults must be between 1 and 10"),
+
+  body("children")
     .optional()
     .isInt({ min: 0, max: 10 })
-    .withMessage('Number of children must be between 0 and 10'),
-  
-  body('specialRequests')
+    .withMessage("Number of children must be between 0 and 10"),
+
+  body("specialRequests")
     .optional()
     .isLength({ max: 500 })
-    .withMessage('Special requests must be less than 500 characters'),
-  
+    .withMessage("Special requests must be less than 500 characters"),
+
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: errors.array().map(err => err.msg)
+        message: "Validation error",
+        errors: errors.array().map((err) => err.msg),
       });
     }
     next();
-  }
+  },
 ];
 
 // Validation middleware for guest check-in
 exports.validateGuestCheckIn = [
-  body('name')
+  body("name")
     .trim()
     .notEmpty()
-    .withMessage('Guest name is required')
+    .withMessage("Guest name is required")
     .isLength({ max: 100 })
-    .withMessage('Guest name must be less than 100 characters'),
-    
-  body('phone')
-    .trim()
+    .withMessage("Guest name must be less than 100 characters"),
+
+  body("phone").trim().notEmpty().withMessage("Phone number is required"),
+
+  body("idType")
     .notEmpty()
-    .withMessage('Phone number is required'),
-    
-  body('idType')
-    .notEmpty()
-    .withMessage('ID type is required')
-    .isIn(['passport', 'driving_license', 'national_id', 'other'])
-    .withMessage('Invalid ID type'),
-    
-  body('idNumber')
-    .trim()
-    .notEmpty()
-    .withMessage('ID number is required'),
-    
-  body('checkInDate')
+    .withMessage("ID type is required")
+    .isIn(["passport", "driving_license", "national_id", "other"])
+    .withMessage("Invalid ID type"),
+
+  body("idNumber").trim().notEmpty().withMessage("ID number is required"),
+
+  body("checkInDate")
     .isISO8601()
-    .withMessage('Valid check-in date is required'),
-    
-  body('checkOutDate')
+    .withMessage("Valid check-in date is required"),
+
+  body("checkOutDate")
     .isISO8601()
-    .withMessage('Valid check-out date is required'),
-    
-  body('numberOfGuests')
+    .withMessage("Valid check-out date is required"),
+
+  body("numberOfGuests")
     .isInt({ min: 1 })
-    .withMessage('Number of guests must be at least 1'),
-    
-  body('roomId')
+    .withMessage("Number of guests must be at least 1"),
+
+  body("roomId")
     .notEmpty()
-    .withMessage('Room selection is required')
+    .withMessage("Room selection is required")
     .isMongoId()
-    .withMessage('Invalid room ID'),
-    
+    .withMessage("Invalid room ID"),
+
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        errors: errors.array(),
       });
     }
     next();
-  }
+  },
 ];

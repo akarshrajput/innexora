@@ -1,45 +1,48 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const messageSchema = new mongoose.Schema({
-  content: {
-    type: String,
-    required: [true, 'Message content is required'],
-    trim: true,
+const messageSchema = new mongoose.Schema(
+  {
+    content: {
+      type: String,
+      required: [true, "Message content is required"],
+      trim: true,
+    },
+    sender: {
+      type: String,
+      enum: ["guest", "manager", "ai_assistant", "system"],
+      required: true,
+    },
+    senderName: {
+      type: String,
+      trim: true,
+      required: true,
+    },
   },
-  sender: {
-    type: String,
-    enum: ['guest', 'manager', 'ai_assistant', 'system'],
-    required: true,
-  },
-  senderName: {
-    type: String,
-    trim: true,
-    required: true,
-  },
-}, { timestamps: true });
+  { timestamps: true }
+);
 
 const ticketSchema = new mongoose.Schema(
   {
     room: {
       type: mongoose.Schema.ObjectId,
-      ref: 'Room',
-      required: [true, 'Room reference is required'],
+      ref: "Room",
+      required: [true, "Room reference is required"],
     },
     roomNumber: {
       type: String,
-      required: [true, 'Room number is required'],
+      required: [true, "Room number is required"],
       trim: true,
     },
     status: {
       type: String,
-      enum: ['raised', 'in_progress', 'completed'],
-      default: 'raised',
+      enum: ["raised", "in_progress", "completed"],
+      default: "raised",
     },
     messages: [messageSchema],
     guestInfo: {
       name: {
         type: String,
-        required: [true, 'Guest name is required'],
+        required: [true, "Guest name is required"],
         trim: true,
       },
       email: {
@@ -54,13 +57,26 @@ const ticketSchema = new mongoose.Schema(
     },
     priority: {
       type: String,
-      enum: ['low', 'medium', 'high'],
-      default: 'medium',
+      enum: ["low", "medium", "high"],
+      default: "medium",
     },
     subject: {
       type: String,
       trim: true,
-      default: 'Service Request',
+      default: "Service Request",
+    },
+    category: {
+      type: String,
+      enum: [
+        "service_fb",
+        "housekeeping",
+        "maintenance",
+        "porter",
+        "concierge",
+        "reception",
+        "general",
+      ],
+      default: "general",
     },
     completedAt: {
       type: Date,
@@ -77,31 +93,34 @@ const ticketSchema = new mongoose.Schema(
 // Indexes for common queries
 ticketSchema.index({ status: 1 });
 ticketSchema.index({ room: 1, status: 1 });
-ticketSchema.index({ 'guestInfo.name': 'text', 'guestInfo.email': 'text' });
+ticketSchema.index({ "guestInfo.name": "text", "guestInfo.email": "text" });
 
 // Static method to get ticket statistics
-ticketSchema.statics.getStats = async function() {
+ticketSchema.statics.getStats = async function () {
   const stats = await this.aggregate([
     {
       $group: {
-        _id: '$status',
-        count: { $sum: 1 }
-      }
-    }
+        _id: "$status",
+        count: { $sum: 1 },
+      },
+    },
   ]);
 
-  return stats.reduce((acc, curr) => {
-    acc[curr._id] = curr.count;
-    return acc;
-  }, { raised: 0, in_progress: 0, completed: 0 });
+  return stats.reduce(
+    (acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    },
+    { raised: 0, in_progress: 0, completed: 0 }
+  );
 };
 
 // Update status timestamp when ticket is completed
-ticketSchema.pre('save', function(next) {
-  if (this.isModified('status')) {
-    if (this.status === 'completed' && !this.completedAt) {
+ticketSchema.pre("save", function (next) {
+  if (this.isModified("status")) {
+    if (this.status === "completed" && !this.completedAt) {
       this.completedAt = new Date();
-    } else if (this.status !== 'completed') {
+    } else if (this.status !== "completed") {
       // Reset completedAt if status changes away from completed
       this.completedAt = null;
     }
@@ -110,21 +129,23 @@ ticketSchema.pre('save', function(next) {
 });
 
 // Static method to clean up old completed tickets
-ticketSchema.statics.cleanupOldTickets = async function() {
+ticketSchema.statics.cleanupOldTickets = async function () {
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  
+
   try {
     const result = await this.deleteMany({
-      status: 'completed',
-      completedAt: { $lt: twentyFourHoursAgo, $ne: null }
+      status: "completed",
+      completedAt: { $lt: twentyFourHoursAgo, $ne: null },
     });
-    
-    console.log(`🗑️ Cleaned up ${result.deletedCount} completed tickets older than 24 hours`);
+
+    console.log(
+      `🗑️ Cleaned up ${result.deletedCount} completed tickets older than 24 hours`
+    );
     return result.deletedCount;
   } catch (error) {
-    console.error('Error cleaning up old tickets:', error);
+    console.error("Error cleaning up old tickets:", error);
     return 0;
   }
 };
 
-module.exports = mongoose.model('Ticket', ticketSchema);
+module.exports = mongoose.model("Ticket", ticketSchema);
