@@ -43,6 +43,11 @@ router
   )
   .delete(authorize("admin"), guestController.deleteGuest);
 
+// Check-in and check-out routes
+router
+  .route("/checkin")
+  .post(authorize("manager", "admin"), guestController.checkInGuest);
+
 router
   .route("/:id/checkin")
   .put(authorize("manager", "admin"), guestController.checkInGuest);
