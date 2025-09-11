@@ -1,8 +1,7 @@
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
-const bcrypt = require('bcryptjs');
-const Hotel = require('../models/Hotel');
-const Booking = require('../models/Booking');
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+const bcrypt = require("bcryptjs");
+const MainHotel = require("../models/MainHotel");
 
 // Load environment variables
 dotenv.config();
@@ -14,22 +13,20 @@ const connectDB = async () => {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
-    console.log('✅ Connected to MongoDB');
+    console.log("✅ Connected to MongoDB");
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
+    console.error("❌ MongoDB connection error:", error);
     process.exit(1);
   }
 };
 
-
 // Clear existing data
 const clearDatabase = async () => {
   try {
-    await Hotel.deleteMany({});
-    await Booking.deleteMany({});
-    console.log('🗑️  Cleared all data');
+    await MainHotel.deleteMany({});
+    console.log("🗑️  Cleared all data");
   } catch (error) {
-    console.error('Error clearing database:', error);
+    console.error("Error clearing database:", error);
     process.exit(1);
   }
 };
@@ -37,177 +34,117 @@ const clearDatabase = async () => {
 // Create a test hotel manager
 const createTestManager = async () => {
   try {
-    const email = 'manager@example.com';
+    const email = "manager@example.com";
     const managerId = new mongoose.Types.ObjectId();
-    
+
     console.log(`👤 Using test manager: ${email}`);
-    
+
     return { id: managerId, email };
   } catch (error) {
-    console.error('Error creating test manager:', error);
+    console.error("Error creating test manager:", error);
     process.exit(1);
   }
 };
 
-// Create sample hotels with rooms
+// Create sample hotels
 const createSampleHotels = async (managerId) => {
   const hotels = [
     {
-      name: 'Grand Paradise Hotel',
-      description: 'A luxurious 5-star hotel with stunning ocean views',
+      name: "Grand Paradise Hotel",
+      subdomain: "grandparadise",
+      description: "A luxurious 5-star hotel with stunning ocean views",
+      website: "https://grandparadise.com",
+      database_url:
+        process.env.MONGODB_URI || "mongodb://localhost:27017/grandparadise",
       location: {
-        address: '123 Ocean Drive',
-        city: 'Miami',
-        state: 'Florida',
-        country: 'USA',
-        postalCode: '33139',
+        address: "123 Ocean Drive",
+        city: "Miami",
+        state: "Florida",
+        country: "USA",
+        postalCode: "33139",
         coordinates: {
-          type: 'Point',
-          coordinates: [-80.1300, 25.7617],
+          type: "Point",
+          coordinates: [-80.13, 25.7617],
         },
       },
       contact: {
-        phone: '+1 (555) 123-4567',
-        email: 'info@grandparadise.com',
-        website: 'https://grandparadise.com',
+        phone: "+1 (555) 123-4567",
+        email: "info@grandparadise.com",
+        website: "https://grandparadise.com",
       },
       manager: managerId,
-      amenities: ['pool', 'spa', 'restaurant', 'gym', 'wifi'],
-      checkInTime: '15:00',
-      checkOutTime: '12:00',
-      rooms: [
-        {
-          number: '101',
-          type: 'Deluxe King',
-          price: 299,
-          maxGuests: 2,
-          amenities: ['tv', 'minibar', 'safe', 'ac'],
-          isAvailable: true,
-        },
-        {
-          number: '102',
-          type: 'Deluxe Twin',
-          price: 279,
-          maxGuests: 2,
-          amenities: ['tv', 'minibar', 'safe', 'ac'],
-          isAvailable: true,
-        },
-        {
-          number: '201',
-          type: 'Executive Suite',
-          price: 499,
-          maxGuests: 3,
-          amenities: ['tv', 'minibar', 'safe', 'ac', 'balcony', 'ocean_view'],
-          isAvailable: true,
-        },
-      ],
+      amenities: ["pool", "spa", "restaurant", "gym", "wifi"],
+      checkInTime: "15:00",
+      checkOutTime: "12:00",
+      status: "Active",
     },
     {
-      name: 'Mountain View Lodge',
-      description: 'A cozy lodge with breathtaking mountain views',
+      name: "Mountain View Lodge",
+      subdomain: "mountainview",
+      description: "A cozy lodge with breathtaking mountain views",
+      website: "https://mountainviewlodge.com",
+      database_url:
+        process.env.MONGODB_URI || "mongodb://localhost:27017/mountainview",
       location: {
-        address: '456 Alpine Road',
-        city: 'Aspen',
-        state: 'Colorado',
-        country: 'USA',
-        postalCode: '81611',
+        address: "456 Alpine Road",
+        city: "Aspen",
+        state: "Colorado",
+        country: "USA",
+        postalCode: "81611",
         coordinates: {
-          type: 'Point',
+          type: "Point",
           coordinates: [-106.8172, 39.1911],
         },
       },
       contact: {
-        phone: '+1 (555) 987-6543',
-        email: 'info@mountainviewlodge.com',
-        website: 'https://mountainviewlodge.com',
+        phone: "+1 (555) 987-6543",
+        email: "info@mountainviewlodge.com",
+        website: "https://mountainviewlodge.com",
       },
       manager: managerId,
-      amenities: ['restaurant', 'bar', 'wifi', 'parking', 'hot_tub'],
-      checkInTime: '16:00',
-      checkOutTime: '11:00',
-      rooms: [
-        {
-          number: '101',
-          type: 'Standard Queen',
-          price: 199,
-          maxGuests: 2,
-          amenities: ['tv', 'heating', 'mountain_view'],
-          isAvailable: true,
+      amenities: ["restaurant", "bar", "wifi", "parking", "hot_tub"],
+      checkInTime: "16:00",
+      checkOutTime: "11:00",
+      status: "Active",
+    },
+    {
+      name: "Marriott Hotel",
+      subdomain: "marriott",
+      description: "A premium business hotel with modern amenities",
+      website: "https://marriott.com",
+      database_url:
+        process.env.MONGODB_URI || "mongodb://localhost:27017/marriott",
+      location: {
+        address: "789 Business District",
+        city: "New York",
+        state: "New York",
+        country: "USA",
+        postalCode: "10001",
+        coordinates: {
+          type: "Point",
+          coordinates: [-74.006, 40.7128],
         },
-        {
-          number: '102',
-          type: 'Deluxe King',
-          price: 249,
-          maxGuests: 2,
-          amenities: ['tv', 'heating', 'fireplace', 'mountain_view'],
-          isAvailable: true,
-        },
-      ],
+      },
+      contact: {
+        phone: "+1 (555) 555-0123",
+        email: "info@marriott.com",
+        website: "https://marriott.com",
+      },
+      manager: managerId,
+      amenities: ["pool", "restaurant", "gym", "wifi", "business_center"],
+      checkInTime: "15:00",
+      checkOutTime: "12:00",
+      status: "Active",
     },
   ];
 
   try {
-    const createdHotels = await Hotel.insertMany(hotels);
+    const createdHotels = await MainHotel.insertMany(hotels);
     console.log(`🏨 Created ${createdHotels.length} hotels`);
+    console.log("Sample subdomains: grandparadise, mountainview, marriott");
     return createdHotels;
   } catch (error) {
-    console.error('Error creating sample hotels:', error);
-    throw error;
-  }
-};
-
-// Create sample bookings
-const createSampleBookings = async (hotels) => {
-  const now = new Date();
-  const nextWeek = new Date(now);
-  nextWeek.setDate(now.getDate() + 7);
-  
-  const twoWeeksLater = new Date(nextWeek);
-  twoWeeksLater.setDate(nextWeek.getDate() + 14);
-  
-  const bookings = [
-    {
-      hotel: hotels[0]._id,
-      room: hotels[0].rooms[0]._id,
-      guest: {
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        phone: '+1 (555) 123-4567',
-      },
-      checkIn: nextWeek,
-      checkOut: twoWeeksLater,
-      numberOfGuests: 2,
-      totalAmount: 299 * 7, // 7 nights
-      status: 'confirmed',
-      paymentStatus: 'paid',
-      paymentMethod: 'credit_card',
-      specialRequests: 'Late check-in after 8 PM please',
-    },
-    {
-      hotel: hotels[1]._id,
-      room: hotels[1].rooms[1]._id,
-      guest: {
-        name: 'Jane Smith',
-        email: 'jane.smith@example.com',
-        phone: '+1 (555) 987-6543',
-      },
-      checkIn: nextWeek,
-      checkOut: twoWeeksLater,
-      numberOfGuests: 2,
-      totalAmount: 249 * 7, // 7 nights
-      status: 'confirmed',
-      paymentStatus: 'pending',
-      paymentMethod: 'credit_card',
-      specialRequests: 'Would like a room with a view if possible',
-    },
-  ];
-
-  try {
-    const createdBookings = await Booking.insertMany(bookings);
-    console.log(`📅 Created ${createdBookings.length} sample bookings`);
-    return createdBookings;
-  } catch (error) {
-    console.error('Error creating sample bookings:', error);
+    console.error("Error creating sample hotels:", error);
     throw error;
   }
 };
@@ -215,24 +152,27 @@ const createSampleBookings = async (hotels) => {
 // Main function to run the seed script
 const seedDatabase = async () => {
   try {
-    console.log('🌱 Starting database seeding...');
-    
+    console.log("🌱 Starting database seeding...");
+
     await connectDB();
     await clearDatabase();
-    
+
     const manager = await createTestManager();
     const hotels = await createSampleHotels(manager.id);
-    await createSampleBookings(hotels);
-    
-    console.log('✅ Database seeded successfully!');
-    console.log('\n🔑 Test Manager Credentials:');
+
+    console.log("✅ Database seeded successfully!");
+    console.log("\n🔑 Test Manager Credentials:");
     console.log(`   Email: ${manager.email}`);
-    console.log('   Password: password123');
-    console.log('\n🚀 Start the server with: npm run dev');
-    
+    console.log("   Password: password123");
+    console.log("\n🚀 Available subdomains for testing:");
+    console.log("   - grandparadise.localhost:3000");
+    console.log("   - mountainview.localhost:3000");
+    console.log("   - marriott.localhost:3000");
+    console.log("\n🚀 Start the server with: npm run dev");
+
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error seeding database:', error);
+    console.error("❌ Error seeding database:", error);
     process.exit(1);
   }
 };

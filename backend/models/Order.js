@@ -38,6 +38,7 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      index: true,
       trim: true,
     },
     guest: {
@@ -119,7 +120,7 @@ orderSchema.index({ status: 1 });
 orderSchema.index({ guest: 1 });
 orderSchema.index({ room: 1 });
 orderSchema.index({ roomNumber: 1 });
-orderSchema.index({ orderNumber: 1 });
+// orderNumber index removed as it's already defined as unique in schema
 orderSchema.index({ createdAt: -1 });
 
 // Generate order number before saving

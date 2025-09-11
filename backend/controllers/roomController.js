@@ -1,26 +1,65 @@
-const Room = require('../models/Room');
-const { body, validationResult } = require('express-validator');
-const ErrorResponse = require('../utils/errorResponse');
+const Room = require("../models/Room");
+const { body, validationResult } = require("express-validator");
+const ErrorResponse = require("../utils/errorResponse");
 
 // @desc    Get all rooms for the manager's hotel
 // @route   GET /api/rooms
 // @access  Private/Manager
 exports.getRooms = async (req, res, next) => {
   try {
-    console.log('Fetching rooms for user:', req.user);
-    // Temporarily remove the manager filter to debug
-    const rooms = await Room.find({ isActive: true })
-      .select('-__v -createdAt -updatedAt')
+    console.log("Fetching rooms for user:", req.user);
+
+    // Use tenant Room model - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+
+    try {
+      // Add diagnostics for room collection
+      const conn = req.tenantDb;
+      if (conn && conn.db) {
+        const dbName = conn.name || (conn.db.databaseName || "unknown");
+        const rawCount = await conn.db.collection("rooms").countDocuments();
+        console.log(`Tenant DB: ${dbName} | rooms collection count: ${rawCount}`);
+      }
+    } catch (diagErr) {
+      console.warn("Diagnostics error (room count):", diagErr.message);
+    }
+
+    // Add timeout for room queries
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Room query timeout')), 5000);
+    });
+    
+    const roomsPromise = Room.find({ isActive: true })
+      .select("-__v -createdAt -updatedAt")
       .lean();
+
+    const rooms = await Promise.race([roomsPromise, timeoutPromise]);
+
+    console.log(`Found ${rooms.length} rooms`);
 
     res.status(200).json({
       success: true,
       count: rooms.length,
-      data: rooms
+      data: rooms,
     });
   } catch (error) {
-    console.error('Get rooms error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get rooms error:", error.message);
+    
+    if (error.message.includes('timeout')) {
+      return res.status(503).json({
+        success: false,
+        error: "Database temporarily unavailable",
+      });
+    }
+    
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -29,22 +68,36 @@ exports.getRooms = async (req, res, next) => {
 // @access  Private/Manager
 exports.getRoom = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+
     const room = await Room.findOne({
       _id: req.params.id,
-      isActive: true
-    }).select('-__v -createdAt -updatedAt').lean();
+      isActive: true,
+    })
+      .select("-__v -createdAt -updatedAt")
+      .lean();
 
     if (!room) {
-      return next(new ErrorResponse(`Room not found with id of ${req.params.id}`, 404));
+      return next(
+        new ErrorResponse(`Room not found with id of ${req.params.id}`, 404)
+      );
     }
 
     res.status(200).json({
       success: true,
-      data: room
+      data: room,
     });
   } catch (error) {
-    console.error('Get room error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get room error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -54,15 +107,26 @@ exports.getRoom = async (req, res, next) => {
 exports.createRoom = async (req, res, next) => {
   try {
     // Check for duplicate room number
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+
     const roomExists = await Room.findOne({
       number: req.body.number,
-      isActive: true
+      isActive: true,
     });
 
     if (roomExists) {
       return res.status(400).json({
         success: false,
-        message: `Room with number ${req.body.number} already exists`
+        message: `Room with number ${req.body.number} already exists`,
       });
     }
 
@@ -77,14 +141,14 @@ exports.createRoom = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      data: room
+      data: room,
     });
   } catch (error) {
-    console.error('Create room error:', error);
+    console.error("Create room error:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -94,11 +158,21 @@ exports.createRoom = async (req, res, next) => {
 // @access  Private/Manager
 exports.updateRoom = async (req, res, next) => {
   try {
-    console.log('Updating room:', req.params.id, 'for user:', req.user);
+    console.log("Updating room:", req.params.id, "for user:", req.user);
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
     // Temporarily remove manager filter for debugging
     let room = await Room.findOne({
       _id: req.params.id,
-      isActive: true
+      isActive: true,
     });
 
     if (!room) {
@@ -112,9 +186,9 @@ exports.updateRoom = async (req, res, next) => {
       const roomExists = await Room.findOne({
         number: req.body.number,
         isActive: true,
-        _id: { $ne: req.params.id }
+        _id: { $ne: req.params.id },
       });
-      console.log('Duplicate check - room exists:', roomExists);
+      console.log("Duplicate check - room exists:", roomExists);
 
       if (roomExists) {
         return next(
@@ -127,8 +201,8 @@ exports.updateRoom = async (req, res, next) => {
     }
 
     // Update room fields
-    const fieldsToUpdate = ['number', 'type', 'floor', 'status'];
-    fieldsToUpdate.forEach(field => {
+    const fieldsToUpdate = ["number", "type", "floor", "status"];
+    fieldsToUpdate.forEach((field) => {
       if (req.body[field] !== undefined) {
         room[field] = req.body[field];
       }
@@ -138,11 +212,11 @@ exports.updateRoom = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: room
+      data: room,
     });
   } catch (error) {
-    console.error('Update room error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Update room error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -151,9 +225,18 @@ exports.updateRoom = async (req, res, next) => {
 // @access  Private/Manager
 exports.deleteRoom = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
     const room = await Room.findOne({
       _id: req.params.id,
-      isActive: true
+      isActive: true,
     });
 
     if (!room) {
@@ -165,13 +248,13 @@ exports.deleteRoom = async (req, res, next) => {
     // Check for active tickets
     const activeTickets = await Ticket.countDocuments({
       room: room._id,
-      status: { $in: ['raised', 'in_progress'] }
+      status: { $in: ["raised", "in_progress"] },
     });
 
     if (activeTickets > 0) {
       return next(
         new ErrorResponse(
-          'Cannot delete room with active tickets. Please resolve all tickets first.',
+          "Cannot delete room with active tickets. Please resolve all tickets first.",
           400
         )
       );
@@ -183,11 +266,11 @@ exports.deleteRoom = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: {}
+      data: {},
     });
   } catch (error) {
-    console.error('Delete room error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Delete room error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -196,10 +279,19 @@ exports.deleteRoom = async (req, res, next) => {
 // @access  Public
 exports.getRoomByNumber = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
     const room = await Room.findOne({
       number: req.params.number,
-      isActive: true
-    }).select('-__v -createdAt -updatedAt -isActive');
+      isActive: true,
+    }).select("-__v -createdAt -updatedAt -isActive");
 
     if (!room) {
       return next(
@@ -212,11 +304,11 @@ exports.getRoomByNumber = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: room
+      data: room,
     });
   } catch (error) {
-    console.error('Get room by number error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get room by number error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -226,11 +318,19 @@ exports.getRoomByNumber = async (req, res, next) => {
 exports.updateRoomStatus = async (req, res, next) => {
   try {
     const { status, reason, updatedBy } = req.body;
-
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
     if (!status || !updatedBy) {
       return res.status(400).json({
         success: false,
-        message: 'Status and updated by are required'
+        message: "Status and updated by are required",
       });
     }
 
@@ -240,19 +340,19 @@ exports.updateRoomStatus = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: `Room ${room.number} status updated to ${status}`,
-      data: room
+      data: room,
     });
   } catch (error) {
-    console.error('Update room status error:', error);
-    
-    if (error.message.includes('Cannot change status')) {
+    console.error("Update room status error:", error);
+
+    if (error.message.includes("Cannot change status")) {
       return res.status(400).json({
         success: false,
-        message: error.message
+        message: error.message,
       });
     }
-    
-    next(new ErrorResponse('Server error', 500));
+
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -262,17 +362,28 @@ exports.updateRoomStatus = async (req, res, next) => {
 exports.getRoomsByStatus = async (req, res, next) => {
   try {
     const { status } = req.params;
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+
     const rooms = await Room.getRoomsByStatus(status);
 
     res.status(200).json({
       success: true,
       count: rooms.length,
       status,
-      data: rooms
+      data: rooms,
     });
   } catch (error) {
-    console.error('Get rooms by status error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get rooms by status error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -281,16 +392,25 @@ exports.getRoomsByStatus = async (req, res, next) => {
 // @access  Private/Manager
 exports.getAvailableRooms = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
     const rooms = await Room.getAvailableRooms();
 
     res.status(200).json({
       success: true,
       count: rooms.length,
-      data: rooms
+      data: rooms,
     });
   } catch (error) {
-    console.error('Get available rooms error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get available rooms error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -299,16 +419,25 @@ exports.getAvailableRooms = async (req, res, next) => {
 // @access  Private/Manager
 exports.getOccupiedRooms = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
     const rooms = await Room.getOccupiedRooms();
 
     res.status(200).json({
       success: true,
       count: rooms.length,
-      data: rooms
+      data: rooms,
     });
   } catch (error) {
-    console.error('Get occupied rooms error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get occupied rooms error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -317,81 +446,99 @@ exports.getOccupiedRooms = async (req, res, next) => {
 // @access  Private/Manager
 exports.getRoomSummary = async (req, res, next) => {
   try {
-    const [availableRooms, occupiedRooms, cleaningRooms, maintenanceRooms] = await Promise.all([
-      Room.getAvailableRooms(),
-      Room.getOccupiedRooms(),
-      Room.getRoomsByStatus('cleaning'),
-      Room.getRoomsByStatus('maintenance')
-    ]);
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    const [availableRooms, occupiedRooms, cleaningRooms, maintenanceRooms] =
+      await Promise.all([
+        Room.getAvailableRooms(),
+        Room.getOccupiedRooms(),
+        Room.getRoomsByStatus("cleaning"),
+        Room.getRoomsByStatus("maintenance"),
+      ]);
 
     const summary = {
-      total: availableRooms.length + occupiedRooms.length + cleaningRooms.length + maintenanceRooms.length,
+      total:
+        availableRooms.length +
+        occupiedRooms.length +
+        cleaningRooms.length +
+        maintenanceRooms.length,
       available: availableRooms.length,
       occupied: occupiedRooms.length,
       cleaning: cleaningRooms.length,
       maintenance: maintenanceRooms.length,
-      occupancyRate: Math.round(((occupiedRooms.length / (availableRooms.length + occupiedRooms.length)) * 100) || 0)
+      occupancyRate: Math.round(
+        (occupiedRooms.length /
+          (availableRooms.length + occupiedRooms.length)) *
+          100 || 0
+      ),
     };
 
     res.status(200).json({
       success: true,
-      data: summary
+      data: summary,
     });
   } catch (error) {
-    console.error('Get room summary error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get room summary error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
 // Validation middleware for room
 exports.validateRoomData = [
-  body('number')
+  body("number")
     .trim()
     .notEmpty()
-    .withMessage('Room number is required')
+    .withMessage("Room number is required")
     .isNumeric()
-    .withMessage('Room number must be numeric'),
-  
-  body('type')
+    .withMessage("Room number must be numeric"),
+
+  body("type")
     .trim()
     .notEmpty()
-    .withMessage('Room type is required')
-    .isIn(['single', 'double', 'triple', 'suite', 'deluxe'])
-    .withMessage('Invalid room type'),
-  
-  body('floor')
+    .withMessage("Room type is required")
+    .isIn(["single", "double", "triple", "suite", "deluxe"])
+    .withMessage("Invalid room type"),
+
+  body("floor")
     .trim()
     .notEmpty()
-    .withMessage('Floor is required')
+    .withMessage("Floor is required")
     .isNumeric()
-    .withMessage('Floor must be numeric'),
-  
-  body('capacity')
+    .withMessage("Floor must be numeric"),
+
+  body("capacity")
     .isNumeric()
-    .withMessage('Capacity must be numeric')
-    .custom(value => value >= 1)
-    .withMessage('Capacity must be at least 1'),
-  
-  body('price')
+    .withMessage("Capacity must be numeric")
+    .custom((value) => value >= 1)
+    .withMessage("Capacity must be at least 1"),
+
+  body("price")
     .isNumeric()
-    .withMessage('Price must be numeric')
-    .custom(value => value >= 0)
-    .withMessage('Price cannot be negative'),
-  
-  body('status')
+    .withMessage("Price must be numeric")
+    .custom((value) => value >= 0)
+    .withMessage("Price cannot be negative"),
+
+  body("status")
     .optional()
-    .isIn(['available', 'occupied', 'cleaning', 'maintenance', 'reserved'])
-    .withMessage('Invalid room status'),
-  
+    .isIn(["available", "occupied", "cleaning", "maintenance", "reserved"])
+    .withMessage("Invalid room status"),
+
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: errors.array().map(err => err.msg)
+        message: "Validation error",
+        errors: errors.array().map((err) => err.msg),
       });
     }
     next();
-  }
+  },
 ];

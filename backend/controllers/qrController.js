@@ -1,25 +1,30 @@
-const QRCode = require('../models/QRCode');
-const qr = require('qrcode');
-const { body, validationResult } = require('express-validator');
+const QRCode = require("../models/QRCode");
+const qr = require("qrcode");
+const { body, validationResult } = require("express-validator");
 
 // @desc    Generate QR code for a room
 // @route   POST /api/qr-codes/generate
 // @access  Private (Hotel Staff)
 exports.generateQRCode = [
   [
-    body('roomNumber', 'Room number is required').not().isEmpty().trim(),
-    body('daysValid', 'Days valid must be a positive number')
+    body("roomNumber", "Room number is required").not().isEmpty().trim(),
+    body("daysValid", "Days valid must be a positive number")
       .optional()
       .isInt({ min: 1, max: 365 })
       .toInt(),
   ],
   async (req, res) => {
     try {
+      // Use tenant models
+      const QRCode = req.tenantModels
+        ? req.tenantModels.QRCode
+        : require("../models/QRCode");
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           success: false,
-          errors: errors.array() 
+          errors: errors.array(),
         });
       }
 
@@ -29,9 +34,9 @@ exports.generateQRCode = [
 
       // Generate new QR code
       const qrCode = await QRCode.generateForRoom(
-        roomNumber, 
-        hotelId, 
-        userId, 
+        roomNumber,
+        hotelId,
+        userId,
         daysValid
       );
 
@@ -43,15 +48,19 @@ exports.generateQRCode = [
       };
 
       const qrDataUrl = await new Promise((resolve, reject) => {
-        qr.toDataURL(JSON.stringify(qrData), {
-          errorCorrectionLevel: 'H', // High error correction
-          type: 'image/png',
-          margin: 1,
-          scale: 8,
-        }, (err, url) => {
-          if (err) return reject(err);
-          resolve(url);
-        });
+        qr.toDataURL(
+          JSON.stringify(qrData),
+          {
+            errorCorrectionLevel: "H", // High error correction
+            type: "image/png",
+            margin: 1,
+            scale: 8,
+          },
+          (err, url) => {
+            if (err) return reject(err);
+            resolve(url);
+          }
+        );
       });
 
       res.json({
@@ -62,16 +71,16 @@ exports.generateQRCode = [
           expiresAt: qrCode.expiresAt,
         },
       });
-
     } catch (error) {
-      console.error('Generate QR code error:', error);
-      res.status(500).json({ 
+      console.error("Generate QR code error:", error);
+      res.status(500).json({
         success: false,
-        message: 'Failed to generate QR code',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: "Failed to generate QR code",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
-  }
+  },
 ];
 
 // @desc    Validate QR code
@@ -79,16 +88,21 @@ exports.generateQRCode = [
 // @access  Public
 exports.validateQRCode = [
   [
-    body('token', 'Token is required').not().isEmpty().trim(),
-    body('roomNumber', 'Room number is required').not().isEmpty().trim(),
+    body("token", "Token is required").not().isEmpty().trim(),
+    body("roomNumber", "Room number is required").not().isEmpty().trim(),
   ],
   async (req, res) => {
     try {
+      // Use tenant models
+      const QRCode = req.tenantModels
+        ? req.tenantModels.QRCode
+        : require("../models/QRCode");
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           success: false,
-          errors: errors.array() 
+          errors: errors.array(),
         });
       }
 
@@ -102,15 +116,14 @@ exports.validateQRCode = [
           roomNumber,
         },
       });
-
     } catch (error) {
-      console.error('Validate QR code error:', error);
-      res.status(500).json({ 
+      console.error("Validate QR code error:", error);
+      res.status(500).json({
         success: false,
-        message: 'Failed to validate QR code',
+        message: "Failed to validate QR code",
       });
     }
-  }
+  },
 ];
 
 // @desc    Get all QR codes for a hotel
@@ -118,7 +131,12 @@ exports.validateQRCode = [
 // @access  Private (Hotel Staff)
 exports.getQRCodes = async (req, res) => {
   try {
-    const qrCodes = await QRCode.find({ 
+    // Use tenant models
+    const QRCode = req.tenantModels
+      ? req.tenantModels.QRCode
+      : require("../models/QRCode");
+
+    const qrCodes = await QRCode.find({
       hotel: req.user.hotelId,
       isActive: true,
       expiresAt: { $gt: new Date() },
@@ -129,12 +147,11 @@ exports.getQRCodes = async (req, res) => {
       count: qrCodes.length,
       data: qrCodes,
     });
-
   } catch (error) {
-    console.error('Get QR codes error:', error);
-    res.status(500).json({ 
+    console.error("Get QR codes error:", error);
+    res.status(500).json({
       success: false,
-      message: 'Failed to get QR codes',
+      message: "Failed to get QR codes",
     });
   }
 };
@@ -144,8 +161,13 @@ exports.getQRCodes = async (req, res) => {
 // @access  Private (Hotel Staff)
 exports.revokeQRCode = async (req, res) => {
   try {
+    // Use tenant models
+    const QRCode = req.tenantModels
+      ? req.tenantModels.QRCode
+      : require("../models/QRCode");
+
     const qrCode = await QRCode.findOneAndUpdate(
-      { 
+      {
         _id: req.params.id,
         hotel: req.user.hotelId,
         isActive: true,
@@ -157,21 +179,20 @@ exports.revokeQRCode = async (req, res) => {
     if (!qrCode) {
       return res.status(404).json({
         success: false,
-        message: 'QR code not found or already revoked',
+        message: "QR code not found or already revoked",
       });
     }
 
     res.json({
       success: true,
       data: {},
-      message: 'QR code has been revoked',
+      message: "QR code has been revoked",
     });
-
   } catch (error) {
-    console.error('Revoke QR code error:', error);
-    res.status(500).json({ 
+    console.error("Revoke QR code error:", error);
+    res.status(500).json({
       success: false,
-      message: 'Failed to revoke QR code',
+      message: "Failed to revoke QR code",
     });
   }
 };

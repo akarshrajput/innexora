@@ -11,7 +11,8 @@
     "test:coverage": "NODE_ENV=test jest --coverage",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{js,jsx,json,md}\"",
-    "seed": "node utils/seed.js"
+    "seed": "node utils/seed.js",
+    "seed:main": "node utils/seedMainDb.js"
   },
   "keywords": [
     "hotel",

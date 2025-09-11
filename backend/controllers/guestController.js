@@ -11,6 +11,25 @@ exports.getGuestByRoomAccessId = async (req, res, next) => {
   try {
     const { roomAccessId } = req.params;
 
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
+
     console.log(`Fetching guest info for room access ID: ${roomAccessId}`);
 
     // Find the room by access ID
@@ -68,6 +87,25 @@ exports.getGuestByRoom = async (req, res, next) => {
 
     console.log(`Fetching guest info for room: ${roomNumber}`);
 
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
+
     // Find the room first
     const room = await Room.findOne({ number: roomNumber });
     if (!room) {
@@ -118,6 +156,29 @@ exports.getGuests = async (req, res, next) => {
       `Fetching all guests for manager: ${req.user?.email || "unknown"}`
     );
     const { status, roomNumber, search } = req.query;
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
+    try {
+      // Extra diagnostics: which DB are we hitting and how many documents exist
+      const conn = req.tenantDb;
+      if (conn && conn.db) {
+        const dbName = conn.name || (conn.db.databaseName || "unknown");
+        const rawCount = await conn.db.collection("guests").countDocuments();
+        console.log(`Tenant DB: ${dbName} | guests collection count: ${rawCount}`);
+      } else {
+        console.log("Tenant DB connection not available for diagnostics");
+      }
+    } catch (diagErr) {
+      console.warn("Diagnostics error (guest count):", diagErr.message);
+    }
 
     // Build query - no filters by default to show all guests
     const query = {};
@@ -207,6 +268,17 @@ exports.getGuest = async (req, res, next) => {
     console.log(
       `Fetching guest ${req.params.id} for manager: ${req.user.email}`
     );
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
+
     const guest = await Guest.findOne({
       _id: req.params.id,
       isActive: true,
@@ -234,6 +306,34 @@ exports.getGuest = async (req, res, next) => {
 exports.checkInGuest = async (req, res, next) => {
   try {
     const { roomId, ...guestData } = req.body;
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Bill) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Bill = req.tenantModels.Bill;
 
     // Verify room exists and is available
     const room = await Room.findOne({
@@ -346,6 +446,34 @@ exports.checkoutGuest = async (req, res, next) => {
   try {
     const { checkoutNotes, checkedOutBy } = req.body;
 
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Bill) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Bill = req.tenantModels.Bill;
+
     if (!checkedOutBy) {
       return res.status(400).json({
         success: false,
@@ -384,11 +512,9 @@ exports.checkoutGuest = async (req, res, next) => {
     await guest.save();
 
     // Mark bill as guest checked out (this will move it to guest history)
-    const Bill = require("../models/Bill");
     await Bill.markGuestCheckedOut(guest._id);
 
     // Update room status to cleaning immediately
-    const Room = require("../models/Room");
     await Room.findByIdAndUpdate(guest.room, {
       status: "cleaning",
       currentGuest: null,
@@ -439,6 +565,25 @@ exports.checkoutGuest = async (req, res, next) => {
 exports.updateGuest = async (req, res, next) => {
   try {
     console.log(`Updating guest ${req.params.id}:`, req.body);
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
 
     let guest = await Guest.findById(req.params.id);
     if (!guest) {
@@ -500,7 +645,17 @@ exports.updateGuest = async (req, res, next) => {
 // @access  Private/Admin
 exports.deleteGuest = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
     const guest = await Guest.findById(req.params.id);
+
     if (!guest) {
       return next(
         new ErrorResponse(`Guest not found with id of ${req.params.id}`, 404)
@@ -534,6 +689,16 @@ exports.deleteGuest = async (req, res, next) => {
 // @access  Public
 exports.getGuestByRoom = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
+
     const guest = await Guest.findOne({
       roomNumber: req.params.roomNumber,
       status: "checked_in",
@@ -573,6 +738,24 @@ exports.getGuestByRoom = async (req, res, next) => {
 // @access  Private/Manager
 exports.getGuestStats = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
     const stats = await Guest.aggregate([
       {
         $group: {
@@ -620,6 +803,15 @@ exports.getGuestStats = async (req, res, next) => {
 // @access  Private/Manager
 exports.getActiveGuests = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
     const guests = await Guest.getActiveGuests();
 
     res.status(200).json({
@@ -639,6 +831,16 @@ exports.getActiveGuests = async (req, res, next) => {
 exports.getGuestHistory = async (req, res, next) => {
   try {
     const { status, roomNumber, guestName, startDate, endDate } = req.query;
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
 
     let query = { status: { $in: ["checked_out", "cancelled", "no_show"] } };
 
@@ -671,6 +873,15 @@ exports.getGuestHistory = async (req, res, next) => {
 // @access  Private/Manager
 exports.getGuestCheckoutStatus = async (req, res, next) => {
   try {
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
     const checkoutInfo = await Guest.canCheckOut(req.params.id);
 
     res.status(200).json({
@@ -689,6 +900,25 @@ exports.getGuestCheckoutStatus = async (req, res, next) => {
 exports.createGuest = async (req, res, next) => {
   try {
     console.log("Creating new guest:", req.body);
+
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Room) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Room = req.tenantModels.Room;
+    // Use tenant models - must exist for tenant domains
+    if (!req.tenantModels || !req.tenantModels.Guest) {
+      console.error("Tenant models not available:", req.tenantModels);
+      return res.status(500).json({
+        success: false,
+        error: "Tenant database not properly initialized",
+      });
+    }
+    const Guest = req.tenantModels.Guest;
 
     // Check if room is available
     const room = await Room.findById(req.body.room);

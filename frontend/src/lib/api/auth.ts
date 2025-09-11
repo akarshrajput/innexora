@@ -1,4 +1,4 @@
-import apiClient from './client';
+import { apiClient } from "../api";
 
 export interface RegisterData {
   name: string;
@@ -23,34 +23,79 @@ export interface AuthResponse {
 }
 
 export const register = async (data: RegisterData): Promise<AuthResponse> => {
-  const response = await apiClient.post<AuthResponse>('/auth/register', data);
-  return response.data;
+  const response = await apiClient.post<any>("/auth/register", data);
+  if (!response.success) {
+    throw new Error(response.message || "Registration failed");
+  }
+  // Handle backend response format directly
+  const responseData = response as any;
+  if (responseData.token && responseData.user) {
+    return {
+      token: responseData.token,
+      user: responseData.user,
+    };
+  }
+  // Fallback for data wrapper format
+  if (response.data) {
+    return response.data;
+  }
+  throw new Error("Registration failed - invalid response format");
 };
 
 export const login = async (data: LoginData): Promise<AuthResponse> => {
-  const response = await apiClient.post<AuthResponse>('/auth/login', data);
-  return response.data;
+  const response = await apiClient.post<any>("/auth/login", data);
+  if (!response.success) {
+    throw new Error(response.message || "Login failed");
+  }
+  // Handle backend response format directly
+  const responseData = response as any;
+  if (responseData.token && responseData.user) {
+    return {
+      token: responseData.token,
+      user: responseData.user,
+    };
+  }
+  // Fallback for data wrapper format
+  if (response.data) {
+    return response.data;
+  }
+  throw new Error("Login failed - invalid response format");
 };
 
-export const getCurrentUser = async (): Promise<AuthResponse['user']> => {
-  const response = await apiClient.get<AuthResponse['user']>('/auth/me');
-  return response.data;
+export const getMe = async (): Promise<{
+  id: string;
+  name: string;
+  email: string;
+  hotelName: string;
+}> => {
+  const response = await apiClient.get<any>("/auth/me");
+  if (!response.success) {
+    throw new Error(response.message || "Failed to get user info");
+  }
+  // Handle backend response format directly
+  const responseData = response as any;
+  if (responseData.id && responseData.email) {
+    return responseData;
+  }
+  // Fallback for data wrapper format
+  if (response.data) {
+    return response.data;
+  }
+  throw new Error("Failed to get user info - invalid response format");
 };
 
 export const logout = async (): Promise<void> => {
-  try {
-    await apiClient.post('/auth/logout');
-  } finally {
-    localStorage.removeItem('token');
-    window.location.href = '/auth/login';
+  await apiClient.post("/auth/logout", {});
+};
+
+export const setAuthToken = (token: string | null) => {
+  if (token) {
+    localStorage.setItem("token", token);
+  } else {
+    localStorage.removeItem("token");
   }
 };
 
-export const setAuthToken = (token: string) => {
-  localStorage.setItem('token', token);
-  apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-};
-
 export const isAuthenticated = (): boolean => {
-  return !!localStorage.getItem('token');
+  return !!localStorage.getItem("token");
 };

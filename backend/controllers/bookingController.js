@@ -1,7 +1,7 @@
-const Booking = require('../models/Booking');
-const Hotel = require('../models/Hotel');
-const { body, validationResult } = require('express-validator');
-const QRCode = require('qrcode');
+const Booking = require("../models/Booking");
+const Hotel = require("../models/Hotel");
+const { body, validationResult } = require("express-validator");
+const QRCode = require("qrcode");
 
 // @desc    Create a new booking
 // @route   POST /api/hotels/:hotelId/bookings
@@ -10,6 +10,13 @@ exports.createBooking = async (req, res) => {
   try {
     const { hotelId } = req.params;
     const { room: roomId, checkIn, checkOut } = req.body;
+
+    const Booking = req.tenantModels
+      ? req.tenantModels.Booking
+      : require("../models/Booking");
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
 
     // Find the hotel and room
     const hotel = await Hotel.findById(hotelId);
@@ -29,16 +36,22 @@ exports.createBooking = async (req, res) => {
     }
 
     // Check room availability
-    const isAvailable = await Booking.isRoomAvailable(roomId, checkIn, checkOut);
+    const isAvailable = await Booking.isRoomAvailable(
+      roomId,
+      checkIn,
+      checkOut
+    );
     if (!isAvailable) {
       return res.status(400).json({
         success: false,
-        message: 'Room is not available for the selected dates',
+        message: "Room is not available for the selected dates",
       });
     }
 
     // Calculate total amount (simplified - in a real app, you'd have more complex pricing logic)
-    const nights = Math.ceil((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24));
+    const nights = Math.ceil(
+      (new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24)
+    );
     const totalAmount = room.price * nights;
 
     // Create booking
@@ -69,8 +82,8 @@ exports.createBooking = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Create booking error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Create booking error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -79,6 +92,12 @@ exports.createBooking = async (req, res) => {
 // @access  Private
 exports.getBookings = async (req, res) => {
   try {
+    const Booking = req.tenantModels
+      ? req.tenantModels.Booking
+      : require("../models/Booking");
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
     // Check if user is hotel manager
     const hotel = await Hotel.findById(req.params.hotelId);
     if (!hotel) {
@@ -97,7 +116,7 @@ exports.getBookings = async (req, res) => {
 
     const bookings = await Booking.find({ hotel: req.params.hotelId })
       .sort({ checkIn: -1 })
-      .populate('room', 'number type');
+      .populate("room", "number type");
 
     res.json({
       success: true,
@@ -105,8 +124,8 @@ exports.getBookings = async (req, res) => {
       data: bookings,
     });
   } catch (error) {
-    console.error('Get bookings error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get bookings error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -115,9 +134,15 @@ exports.getBookings = async (req, res) => {
 // @access  Public (with token)
 exports.getBooking = async (req, res) => {
   try {
+    const Booking = req.tenantModels
+      ? req.tenantModels.Booking
+      : require("../models/Booking");
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
     const booking = await Booking.findById(req.params.id)
-      .populate('hotel', 'name location contact')
-      .populate('room', 'number type price');
+      .populate("hotel", "name location contact")
+      .populate("room", "number type price");
 
     if (!booking) {
       return res.status(404).json({
@@ -142,8 +167,8 @@ exports.getBooking = async (req, res) => {
       data: booking,
     });
   } catch (error) {
-    console.error('Get booking error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get booking error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -152,6 +177,12 @@ exports.getBooking = async (req, res) => {
 // @access  Private
 exports.updateBooking = async (req, res) => {
   try {
+    const Booking = req.tenantModels
+      ? req.tenantModels.Booking
+      : require("../models/Booking");
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
     let booking = await Booking.findById(req.params.id);
 
     if (!booking) {
@@ -182,7 +213,7 @@ exports.updateBooking = async (req, res) => {
       if (!isAvailable) {
         return res.status(400).json({
           success: false,
-          message: 'Room is not available for the selected dates',
+          message: "Room is not available for the selected dates",
         });
       }
     }
@@ -198,8 +229,8 @@ exports.updateBooking = async (req, res) => {
       data: booking,
     });
   } catch (error) {
-    console.error('Update booking error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Update booking error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -208,6 +239,12 @@ exports.updateBooking = async (req, res) => {
 // @access  Public (with token or booking reference)
 exports.cancelBooking = async (req, res) => {
   try {
+    const Booking = req.tenantModels
+      ? req.tenantModels.Booking
+      : require("../models/Booking");
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
     const booking = await Booking.findById(req.params.id);
 
     if (!booking) {
@@ -229,12 +266,12 @@ exports.cancelBooking = async (req, res) => {
     } else if (req.body.bookingReference !== booking.bookingNumber) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid booking reference',
+        message: "Invalid booking reference",
       });
     }
 
     // Update booking status to cancelled
-    booking.status = 'cancelled';
+    booking.status = "cancelled";
     booking.cancellationDate = Date.now();
     if (req.body.reason) {
       booking.cancellationReason = req.body.reason;
@@ -246,8 +283,8 @@ exports.cancelBooking = async (req, res) => {
       data: {},
     });
   } catch (error) {
-    console.error('Cancel booking error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Cancel booking error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -263,12 +300,12 @@ exports.generateGuestLink = async (req, res) => {
     if (!roomId || !checkIn || !checkOut || !guestName) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide roomId, checkIn, checkOut, and guestName',
+        message: "Please provide roomId, checkIn, checkOut, and guestName",
       });
     }
 
     // Generate a unique token for guest access
-    const token = require('crypto').randomBytes(32).toString('hex');
+    const token = require("crypto").randomBytes(32).toString("hex");
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // Token expires in 24 hours
 
@@ -288,7 +325,7 @@ exports.generateGuestLink = async (req, res) => {
     const qrCodeUrl = await QRCode.toDataURL(JSON.stringify(qrCodeData));
 
     // Generate a shareable link
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const guestLink = `${baseUrl}/guest/checkin?token=${token}`;
 
     res.json({
@@ -300,19 +337,19 @@ exports.generateGuestLink = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Generate guest link error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Generate guest link error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
 // Validation middleware for booking
 exports.validateBooking = [
-  body('guest.name', 'Guest name is required').not().isEmpty(),
-  body('guest.email', 'Please include a valid email').isEmail(),
-  body('room', 'Room ID is required').not().isEmpty(),
-  body('checkIn', 'Check-in date is required').isISO8601(),
-  body('checkOut', 'Check-out date is required').isISO8601(),
-  body('numberOfGuests', 'Number of guests is required').isInt({ min: 1 }),
+  body("guest.name", "Guest name is required").not().isEmpty(),
+  body("guest.email", "Please include a valid email").isEmail(),
+  body("room", "Room ID is required").not().isEmpty(),
+  body("checkIn", "Check-in date is required").isISO8601(),
+  body("checkOut", "Check-out date is required").isISO8601(),
+  body("numberOfGuests", "Number of guests is required").isInt({ min: 1 }),
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

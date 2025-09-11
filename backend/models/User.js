@@ -90,7 +90,6 @@ userSchema.methods.getResetPasswordToken = function () {
   return resetToken;
 };
 
-// Index for faster queries
-userSchema.index({ email: 1 }, { unique: true });
+// Index for faster queries (removed as email is already unique in schema)
 
 module.exports = mongoose.model('User', userSchema);

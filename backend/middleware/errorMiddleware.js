@@ -5,37 +5,52 @@ exports.errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
 
-  // Log to console for dev
-  console.error(err.stack);
+  // Log to console for dev with more details
+  console.error('Error Handler:', {
+    message: err.message,
+    stack: err.stack,
+    name: err.name,
+    code: err.code,
+    url: req.originalUrl,
+    method: req.method,
+    subdomain: req.subdomain,
+    hotel: req.hotel?.name
+  });
 
   // Mongoose bad ObjectId
-  if (err.name === 'CastError') {
-    const message = `Resource not found with id of ${err.value}`;
+  if (err.name === "CastError") {
+    const message = "Resource not found";
     error = new ErrorResponse(message, 404);
   }
 
   // Mongoose duplicate key
   if (err.code === 11000) {
-    const message = 'Duplicate field value entered';
+    const field = Object.keys(err.keyValue)[0];
+    const message = `Duplicate ${field} entered`;
     error = new ErrorResponse(message, 400);
   }
 
   // Mongoose validation error
-  if (err.name === 'ValidationError') {
+  if (err.name === "ValidationError") {
     const message = Object.values(err.errors).map((val) => val.message);
     error = new ErrorResponse(message, 400);
   }
 
   // JWT errors
-  if (err.name === 'JsonWebTokenError') {
-    const message = 'Not authorized';
+  if (err.name === "JsonWebTokenError") {
+    const message = "Invalid token";
     error = new ErrorResponse(message, 401);
   }
 
-  // JWT expired
-  if (err.name === 'TokenExpiredError') {
-    const message = 'Session expired, please login again';
+  if (err.name === "TokenExpiredError") {
+    const message = "Token expired";
     error = new ErrorResponse(message, 401);
+  }
+
+  // Database connection errors
+  if (err.message && err.message.includes("Failed to connect to tenant database")) {
+    const message = "Hotel database temporarily unavailable";
+    error = new ErrorResponse(message, 503);
   }
 
   // Default to 500 server error

@@ -24,6 +24,7 @@ import {
   Clock,
 } from "lucide-react";
 import Link from "next/link";
+import { dashboardApi } from "@/lib/api";
 
 interface DashboardStats {
   totalRooms: number;
@@ -59,132 +60,96 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const headers: any = {
-        "Content-Type": "application/json",
-      };
-
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      // Simple fetch for rooms
+      // Fetch rooms using dashboardApi
       try {
-        const roomsResponse = await fetch("http://localhost:5050/api/rooms", {
-          method: "GET",
-          headers,
-          credentials: "include",
-        });
+        const roomsResponse = await dashboardApi.getRooms();
+        if (roomsResponse.success && Array.isArray(roomsResponse.data)) {
+          const rooms = roomsResponse.data;
 
-        if (roomsResponse.ok) {
-          const roomsData = await roomsResponse.json();
-          if (roomsData.success && Array.isArray(roomsData.data)) {
-            const rooms = roomsData.data;
-
-            const roomStats = rooms.reduce(
-              (acc: any, room: any) => {
-                acc.totalRooms++;
-                switch (room.status) {
-                  case "available":
-                    acc.availableRooms++;
-                    break;
-                  case "occupied":
-                    acc.occupiedRooms++;
-                    break;
-                  case "maintenance":
-                    acc.maintenanceRooms++;
-                    break;
-                  case "cleaning":
-                    acc.cleaningRooms++;
-                    break;
-                }
-                return acc;
-              },
-              {
-                totalRooms: 0,
-                availableRooms: 0,
-                occupiedRooms: 0,
-                maintenanceRooms: 0,
-                cleaningRooms: 0,
+          const roomStats = rooms.reduce(
+            (acc: any, room: any) => {
+              acc.totalRooms++;
+              switch (room.status) {
+                case "available":
+                  acc.availableRooms++;
+                  break;
+                case "occupied":
+                  acc.occupiedRooms++;
+                  break;
+                case "maintenance":
+                  acc.maintenanceRooms++;
+                  break;
+                case "cleaning":
+                  acc.cleaningRooms++;
+                  break;
               }
-            );
+              return acc;
+            },
+            {
+              totalRooms: 0,
+              availableRooms: 0,
+              occupiedRooms: 0,
+              maintenanceRooms: 0,
+              cleaningRooms: 0,
+            }
+          );
 
-            const occupancyRate =
-              roomStats.totalRooms > 0
-                ? (roomStats.occupiedRooms / roomStats.totalRooms) * 100
-                : 0;
+          const occupancyRate =
+            roomStats.totalRooms > 0
+              ? (roomStats.occupiedRooms / roomStats.totalRooms) * 100
+              : 0;
 
-            setStats((prev) => ({
-              ...prev,
-              ...roomStats,
-              occupancyRate: Math.round(occupancyRate),
-            }));
-          }
+          setStats((prev) => ({
+            ...prev,
+            ...roomStats,
+            occupancyRate: Math.round(occupancyRate),
+          }));
         }
       } catch (error) {
         console.error("Failed to fetch rooms:", error);
       }
 
-      // Simple fetch for guests
+      // Fetch guests using dashboardApi
       try {
-        const guestsResponse = await fetch("http://localhost:5050/api/guests", {
-          method: "GET",
-          headers,
-          credentials: "include",
-        });
+        const guestsResponse = await dashboardApi.getGuests();
+        if (guestsResponse.success && Array.isArray(guestsResponse.data)) {
+          const guests = guestsResponse.data;
 
-        if (guestsResponse.ok) {
-          const guestsData = await guestsResponse.json();
-          if (guestsData.success && Array.isArray(guestsData.data)) {
-            const guests = guestsData.data;
+          const guestStats = guests.reduce(
+            (acc: any, guest: any) => {
+              acc.totalGuests++;
+              if (guest.status === "checked_in") {
+                acc.checkedInGuests++;
+              }
+              return acc;
+            },
+            { totalGuests: 0, checkedInGuests: 0 }
+          );
 
-            const guestStats = guests.reduce(
-              (acc: any, guest: any) => {
-                acc.totalGuests++;
-                if (guest.status === "checked_in") {
-                  acc.checkedInGuests++;
-                }
-                return acc;
-              },
-              { totalGuests: 0, checkedInGuests: 0 }
-            );
-
-            setStats((prev) => ({
-              ...prev,
-              ...guestStats,
-            }));
-          }
+          setStats((prev) => ({
+            ...prev,
+            ...guestStats,
+          }));
         }
       } catch (error) {
         console.error("Failed to fetch guests:", error);
       }
 
-      // Simple fetch for tickets
+      // Fetch tickets using dashboardApi
       try {
-        const ticketsResponse = await fetch(
-          "http://localhost:5050/api/tickets",
-          {
-            method: "GET",
-            headers,
-            credentials: "include",
-          }
-        );
+        const ticketsResponse = await dashboardApi.getTickets();
+        if (ticketsResponse.success && Array.isArray(ticketsResponse.data)) {
+          const tickets = ticketsResponse.data;
+          const ticketStats = {
+            totalTickets: tickets.length,
+            pendingTickets: tickets.filter((t: any) => t.status === "raised")
+              .length,
+          };
 
-        if (ticketsResponse.ok) {
-          const ticketsData = await ticketsResponse.json();
-          if (ticketsData.success && Array.isArray(ticketsData.data)) {
-            const tickets = ticketsData.data;
-            const ticketStats = {
-              totalTickets: tickets.length,
-              pendingTickets: tickets.filter((t: any) => t.status === "raised")
-                .length,
-            };
-
-            setStats((prev) => ({
-              ...prev,
-              ...ticketStats,
-            }));
-          }
+          setStats((prev) => ({
+            ...prev,
+            ...ticketStats,
+          }));
         }
       } catch (error) {
         console.error("Failed to fetch tickets:", error);

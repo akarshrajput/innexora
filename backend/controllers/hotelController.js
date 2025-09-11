@@ -1,14 +1,17 @@
-const Hotel = require('../models/Hotel');
-const { body, validationResult } = require('express-validator');
+const Hotel = require("../models/Hotel");
+const { body, validationResult } = require("express-validator");
 
 // @desc    Get all hotels
 // @route   GET /api/hotels
 // @access  Public
 exports.getHotels = async (req, res) => {
   try {
-    const hotels = await Hotel.find({ isActive: true })
-      .select('-__v');
-      // Removed populate since we're storing manager as string ID
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
+
+    const hotels = await Hotel.find({ isActive: true }).select("-__v");
+    // Removed populate since we're storing manager as string ID
 
     res.json({
       success: true,
@@ -16,8 +19,8 @@ exports.getHotels = async (req, res) => {
       data: hotels,
     });
   } catch (error) {
-    console.error('Get hotels error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get hotels error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -26,9 +29,11 @@ exports.getHotels = async (req, res) => {
 // @access  Public
 exports.getHotel = async (req, res) => {
   try {
-    const hotel = await Hotel.findById(req.params.id)
-      .select('-__v');
-      // Removed populate since we're storing manager as string ID
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
+    const hotel = await Hotel.findById(req.params.id).select("-__v");
+    // Removed populate since we're storing manager as string ID
 
     if (!hotel) {
       return res.status(404).json({
@@ -42,8 +47,8 @@ exports.getHotel = async (req, res) => {
       data: hotel,
     });
   } catch (error) {
-    console.error('Get hotel error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get hotel error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -52,6 +57,9 @@ exports.getHotel = async (req, res) => {
 // @access  Private
 exports.createHotel = async (req, res) => {
   try {
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
     // Add manager to req.body
     req.body.manager = req.user.id;
 
@@ -62,8 +70,8 @@ exports.createHotel = async (req, res) => {
       data: hotel,
     });
   } catch (error) {
-    console.error('Create hotel error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Create hotel error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -72,6 +80,9 @@ exports.createHotel = async (req, res) => {
 // @access  Private
 exports.updateHotel = async (req, res) => {
   try {
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
     let hotel = await Hotel.findById(req.params.id);
 
     if (!hotel) {
@@ -99,8 +110,8 @@ exports.updateHotel = async (req, res) => {
       data: hotel,
     });
   } catch (error) {
-    console.error('Update hotel error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Update hotel error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -109,6 +120,9 @@ exports.updateHotel = async (req, res) => {
 // @access  Private
 exports.deleteHotel = async (req, res) => {
   try {
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
     const hotel = await Hotel.findById(req.params.id);
 
     if (!hotel) {
@@ -135,8 +149,8 @@ exports.deleteHotel = async (req, res) => {
       data: {},
     });
   } catch (error) {
-    console.error('Delete hotel error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Delete hotel error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -145,9 +159,11 @@ exports.deleteHotel = async (req, res) => {
 // @access  Private
 exports.getHotelsByManager = async (req, res) => {
   try {
-    const hotels = await Hotel.find({ manager: req.user.id })
-      .select('-__v');
-      // Removed populate since we're storing manager as string ID
+    const Hotel = req.tenantModels
+      ? req.tenantModels.Hotel
+      : require("../models/Hotel");
+    const hotels = await Hotel.find({ manager: req.user.id }).select("-__v");
+    // Removed populate since we're storing manager as string ID
 
     res.json({
       success: true,
@@ -155,21 +171,21 @@ exports.getHotelsByManager = async (req, res) => {
       data: hotels,
     });
   } catch (error) {
-    console.error('Get manager hotels error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get manager hotels error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
 // Validation middleware for hotel
 exports.validateHotel = [
-  body('name', 'Name is required').not().isEmpty(),
-  body('location.address', 'Address is required').not().isEmpty(),
-  body('location.city', 'City is required').not().isEmpty(),
-  body('location.country', 'Country is required').not().isEmpty(),
-  body('contact.phone', 'Phone number is required').not().isEmpty(),
-  body('rooms').custom((rooms) => {
+  body("name", "Name is required").not().isEmpty(),
+  body("location.address", "Address is required").not().isEmpty(),
+  body("location.city", "City is required").not().isEmpty(),
+  body("location.country", "Country is required").not().isEmpty(),
+  body("contact.phone", "Phone number is required").not().isEmpty(),
+  body("rooms").custom((rooms) => {
     if (!Array.isArray(rooms) || rooms.length === 0) {
-      throw new Error('At least one room is required');
+      throw new Error("At least one room is required");
     }
     return true;
   }),

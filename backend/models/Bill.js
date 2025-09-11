@@ -80,6 +80,7 @@ const billSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      index: true,
       trim: true,
     },
     guest: {
@@ -173,7 +174,7 @@ const billSchema = new mongoose.Schema(
 billSchema.index({ guest: 1 });
 billSchema.index({ room: 1 });
 billSchema.index({ roomNumber: 1 });
-billSchema.index({ billNumber: 1 });
+// billNumber index removed as it's already defined as unique in schema
 billSchema.index({ checkInDate: 1, checkOutDate: 1 });
 billSchema.index({ status: 1 });
 

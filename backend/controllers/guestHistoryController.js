@@ -1,42 +1,55 @@
-const Guest = require('../models/Guest');
-const Order = require('../models/Order');
-const Bill = require('../models/Bill');
-const Ticket = require('../models/Ticket');
-const Room = require('../models/Room');
-const ErrorResponse = require('../utils/errorResponse');
+const Guest = require("../models/Guest");
+const Order = require("../models/Order");
+const Bill = require("../models/Bill");
+const Ticket = require("../models/Ticket");
+const Room = require("../models/Room");
+const ErrorResponse = require("../utils/errorResponse");
 
 // @desc    Get comprehensive guest history with all related data
 // @route   GET /api/guests/history
 // @access  Private/Manager
 exports.getGuestHistory = async (req, res, next) => {
   try {
+    const Guest = req.tenantModels
+      ? req.tenantModels.Guest
+      : require("../models/Guest");
+    const Order = req.tenantModels
+      ? req.tenantModels.Order
+      : require("../models/Order");
+    const Bill = req.tenantModels
+      ? req.tenantModels.Bill
+      : require("../models/Bill");
+    const Ticket = req.tenantModels
+      ? req.tenantModels.Ticket
+      : require("../models/Ticket");
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    
+
     const {
       search,
       status,
       dateFrom,
       dateTo,
-      sortBy = 'checkInDate',
-      sortOrder = 'desc'
+      sortBy = "checkInDate",
+      sortOrder = "desc",
     } = req.query;
 
     // Build query
     let query = { manager: req.user.userId };
-    
+
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { roomNumber: { $regex: search, $options: 'i' } },
-        { idNumber: { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { roomNumber: { $regex: search, $options: "i" } },
+        { idNumber: { $regex: search, $options: "i" } },
       ];
     }
 
-    if (status && status !== 'all') {
+    if (status && status !== "all") {
       query.status = status;
     }
 
@@ -51,8 +64,8 @@ exports.getGuestHistory = async (req, res, next) => {
 
     // Get guests with pagination
     const guests = await Guest.find(query)
-      .populate('room', 'number type floor price')
-      .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+      .populate("room", "number type floor price")
+      .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
       .skip(skip)
       .limit(limit);
 
@@ -61,16 +74,12 @@ exports.getGuestHistory = async (req, res, next) => {
       guests.map(async (guest) => {
         const [orders, bills, tickets] = await Promise.all([
           Order.find({ guest: guest._id })
-            .populate('items.food', 'name price category')
+            .populate("items.food", "name price category")
             .sort({ orderDate: -1 }),
-          Bill.find({ guest: guest._id })
-            .sort({ createdAt: -1 }),
-          Ticket.find({ 
-            $or: [
-              { guestName: guest.name },
-              { roomNumber: guest.roomNumber }
-            ]
-          }).sort({ createdAt: -1 })
+          Bill.find({ guest: guest._id }).sort({ createdAt: -1 }),
+          Ticket.find({
+            $or: [{ guestName: guest.name }, { roomNumber: guest.roomNumber }],
+          }).sort({ createdAt: -1 }),
         ]);
 
         return {
@@ -80,7 +89,7 @@ exports.getGuestHistory = async (req, res, next) => {
           tickets,
           totalSpent: bills.reduce((sum, bill) => sum + bill.total, 0),
           totalOrders: orders.length,
-          totalTickets: tickets.length
+          totalTickets: tickets.length,
         };
       })
     );
@@ -93,13 +102,13 @@ exports.getGuestHistory = async (req, res, next) => {
           current: page,
           pages: Math.ceil(total / limit),
           total,
-          limit
-        }
-      }
+          limit,
+        },
+      },
     });
   } catch (error) {
-    console.error('Get guest history error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest history error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -108,36 +117,46 @@ exports.getGuestHistory = async (req, res, next) => {
 // @access  Private/Manager
 exports.getGuestProfile = async (req, res, next) => {
   try {
+    const Guest = req.tenantModels
+      ? req.tenantModels.Guest
+      : require("../models/Guest");
+    const Order = req.tenantModels
+      ? req.tenantModels.Order
+      : require("../models/Order");
+    const Bill = req.tenantModels
+      ? req.tenantModels.Bill
+      : require("../models/Bill");
+    const Ticket = req.tenantModels
+      ? req.tenantModels.Ticket
+      : require("../models/Ticket");
     const guest = await Guest.findOne({
       _id: req.params.id,
-      manager: req.user.userId
-    }).populate('room', 'number type floor price amenities');
+      manager: req.user.userId,
+    }).populate("room", "number type floor price amenities");
 
     if (!guest) {
-      return next(new ErrorResponse('Guest not found', 404));
+      return next(new ErrorResponse("Guest not found", 404));
     }
 
     // Get all related data
     const [orders, bills, tickets, allStays] = await Promise.all([
       Order.find({ guest: guest._id })
-        .populate('items.food', 'name price category preparationTime')
+        .populate("items.food", "name price category preparationTime")
         .sort({ orderDate: -1 }),
-      Bill.find({ guest: guest._id })
-        .sort({ createdAt: -1 }),
-      Ticket.find({ 
-        $or: [
-          { guestName: guest.name },
-          { roomNumber: guest.roomNumber }
-        ]
+      Bill.find({ guest: guest._id }).sort({ createdAt: -1 }),
+      Ticket.find({
+        $or: [{ guestName: guest.name }, { roomNumber: guest.roomNumber }],
       }).sort({ createdAt: -1 }),
-      Guest.find({ 
+      Guest.find({
         $or: [
           { phone: guest.phone },
           { email: guest.email },
-          { idNumber: guest.idNumber }
+          { idNumber: guest.idNumber },
         ],
-        manager: req.user.userId
-      }).populate('room', 'number type').sort({ checkInDate: -1 })
+        manager: req.user.userId,
+      })
+        .populate("room", "number type")
+        .sort({ checkInDate: -1 }),
     ]);
 
     // Calculate statistics
@@ -146,11 +165,18 @@ exports.getGuestProfile = async (req, res, next) => {
       totalSpent: bills.reduce((sum, bill) => sum + bill.total, 0),
       totalOrders: orders.length,
       totalTickets: tickets.length,
-      averageStayDuration: allStays.reduce((sum, stay) => sum + (stay.stayDuration || 0), 0) / allStays.length || 0,
-      favoriteRoomType: getMostFrequent(allStays.map(stay => stay.room?.type).filter(Boolean)),
-      totalItemsOrdered: orders.reduce((sum, order) => sum + order.items.length, 0),
+      averageStayDuration:
+        allStays.reduce((sum, stay) => sum + (stay.stayDuration || 0), 0) /
+          allStays.length || 0,
+      favoriteRoomType: getMostFrequent(
+        allStays.map((stay) => stay.room?.type).filter(Boolean)
+      ),
+      totalItemsOrdered: orders.reduce(
+        (sum, order) => sum + order.items.length,
+        0
+      ),
       lastVisit: allStays[0]?.checkInDate,
-      firstVisit: allStays[allStays.length - 1]?.checkInDate
+      firstVisit: allStays[allStays.length - 1]?.checkInDate,
     };
 
     res.status(200).json({
@@ -161,12 +187,12 @@ exports.getGuestProfile = async (req, res, next) => {
         bills,
         tickets,
         allStays,
-        stats
-      }
+        stats,
+      },
     });
   } catch (error) {
-    console.error('Get guest profile error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest profile error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -175,6 +201,18 @@ exports.getGuestProfile = async (req, res, next) => {
 // @access  Private/Manager
 exports.getGuestHistoryStats = async (req, res, next) => {
   try {
+    const Guest = req.tenantModels
+      ? req.tenantModels.Guest
+      : require("../models/Guest");
+    const Order = req.tenantModels
+      ? req.tenantModels.Order
+      : require("../models/Order");
+    const Bill = req.tenantModels
+      ? req.tenantModels.Bill
+      : require("../models/Bill");
+    const Ticket = req.tenantModels
+      ? req.tenantModels.Ticket
+      : require("../models/Ticket");
     const [
       totalGuests,
       activeGuests,
@@ -182,29 +220,32 @@ exports.getGuestHistoryStats = async (req, res, next) => {
       totalRevenue,
       totalOrders,
       totalTickets,
-      repeatGuests
+      repeatGuests,
     ] = await Promise.all([
       Guest.countDocuments({ manager: req.user.userId }),
-      Guest.countDocuments({ manager: req.user.userId, status: 'checked_in' }),
-      Guest.countDocuments({ manager: req.user.userId, status: 'checked_out' }),
-      Bill.aggregate([
-        { $group: { _id: null, total: { $sum: '$total' } } }
-      ]),
+      Guest.countDocuments({ manager: req.user.userId, status: "checked_in" }),
+      Guest.countDocuments({ manager: req.user.userId, status: "checked_out" }),
+      Bill.aggregate([{ $group: { _id: null, total: { $sum: "$total" } } }]),
       Order.countDocuments({}),
       Ticket.countDocuments({}),
       Guest.aggregate([
         { $match: { manager: req.user.userId } },
-        { $group: { _id: { phone: '$phone', email: '$email' }, count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: { phone: "$phone", email: "$email" },
+            count: { $sum: 1 },
+          },
+        },
         { $match: { count: { $gt: 1 } } },
-        { $count: 'repeatGuests' }
-      ])
+        { $count: "repeatGuests" },
+      ]),
     ]);
 
     // Recent activity
     const recentActivity = await Guest.find({ manager: req.user.userId })
       .sort({ updatedAt: -1 })
       .limit(5)
-      .populate('room', 'number type');
+      .populate("room", "number type");
 
     res.status(200).json({
       success: true,
@@ -216,12 +257,12 @@ exports.getGuestHistoryStats = async (req, res, next) => {
         totalOrders,
         totalTickets,
         repeatGuests: repeatGuests[0]?.repeatGuests || 0,
-        recentActivity
-      }
+        recentActivity,
+      },
     });
   } catch (error) {
-    console.error('Get guest history stats error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Get guest history stats error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -230,19 +271,30 @@ exports.getGuestHistoryStats = async (req, res, next) => {
 // @access  Private/Manager
 exports.searchGuestHistory = async (req, res, next) => {
   try {
-    const { q, type = 'all' } = req.query;
-    
+    const { q, type = "all" } = req.query;
+    const Guest = req.tenantModels
+      ? req.tenantModels.Guest
+      : require("../models/Guest");
+    const Order = req.tenantModels
+      ? req.tenantModels.Order
+      : require("../models/Order");
+    const Bill = req.tenantModels
+      ? req.tenantModels.Bill
+      : require("../models/Bill");
+    const Ticket = req.tenantModels
+      ? req.tenantModels.Ticket
+      : require("../models/Ticket");
     if (!q || q.length < 2) {
       return res.status(400).json({
         success: false,
-        message: 'Search query must be at least 2 characters'
+        message: "Search query must be at least 2 characters",
       });
     }
 
-    const searchRegex = { $regex: q, $options: 'i' };
+    const searchRegex = { $regex: q, $options: "i" };
     let results = {};
 
-    if (type === 'all' || type === 'guests') {
+    if (type === "all" || type === "guests") {
       results.guests = await Guest.find({
         manager: req.user.userId,
         $or: [
@@ -250,46 +302,49 @@ exports.searchGuestHistory = async (req, res, next) => {
           { phone: searchRegex },
           { email: searchRegex },
           { roomNumber: searchRegex },
-          { idNumber: searchRegex }
-        ]
-      }).populate('room', 'number type').limit(10);
+          { idNumber: searchRegex },
+        ],
+      })
+        .populate("room", "number type")
+        .limit(10);
     }
 
-    if (type === 'all' || type === 'orders') {
+    if (type === "all" || type === "orders") {
       results.orders = await Order.find({
         manager: req.user.userId,
-        $or: [
-          { orderNumber: searchRegex },
-          { 'guest.name': searchRegex }
-        ]
-      }).populate('guest', 'name roomNumber').limit(10);
+        $or: [{ orderNumber: searchRegex }, { "guest.name": searchRegex }],
+      })
+        .populate("guest", "name roomNumber")
+        .limit(10);
     }
 
-    if (type === 'all' || type === 'bills') {
+    if (type === "all" || type === "bills") {
       results.bills = await Bill.find({
         manager: req.user.userId,
-        billNumber: searchRegex
-      }).populate('guest', 'name roomNumber').limit(10);
+        billNumber: searchRegex,
+      })
+        .populate("guest", "name roomNumber")
+        .limit(10);
     }
 
-    if (type === 'all' || type === 'tickets') {
+    if (type === "all" || type === "tickets") {
       results.tickets = await Ticket.find({
         manager: req.user.userId,
         $or: [
           { guestName: searchRegex },
           { roomNumber: searchRegex },
-          { subject: searchRegex }
-        ]
+          { subject: searchRegex },
+        ],
       }).limit(10);
     }
 
     res.status(200).json({
       success: true,
-      data: results
+      data: results,
     });
   } catch (error) {
-    console.error('Search guest history error:', error);
-    next(new ErrorResponse('Server error', 500));
+    console.error("Search guest history error:", error);
+    next(new ErrorResponse("Server error", 500));
   }
 };
 
@@ -297,8 +352,10 @@ exports.searchGuestHistory = async (req, res, next) => {
 function getMostFrequent(arr) {
   if (!arr.length) return null;
   const frequency = {};
-  arr.forEach(item => frequency[item] = (frequency[item] || 0) + 1);
-  return Object.keys(frequency).reduce((a, b) => frequency[a] > frequency[b] ? a : b);
+  arr.forEach((item) => (frequency[item] = (frequency[item] || 0) + 1));
+  return Object.keys(frequency).reduce((a, b) =>
+    frequency[a] > frequency[b] ? a : b
+  );
 }
 
 module.exports = exports;

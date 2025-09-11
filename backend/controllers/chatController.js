@@ -8,6 +8,10 @@ const Guest = require("../models/Guest");
 // @access  Public
 exports.chatWithAI = async (req, res) => {
   try {
+    const Guest = req.tenantModels
+      ? req.tenantModels.Guest
+      : require("../models/Guest");
+
     console.log("🔍 Received request body:", JSON.stringify(req.body, null, 2));
     const {
       message,
@@ -159,6 +163,13 @@ const createTicketsFromCategories = async (
   req
 ) => {
   try {
+    const Room = req.tenantModels
+      ? req.tenantModels.Room
+      : require("../models/Room");
+    const Ticket = req.tenantModels
+      ? req.tenantModels.Ticket
+      : require("../models/Ticket");
+
     const room = await Room.findOne({ number: guestInfo.roomNumber });
 
     if (!room) {
@@ -224,6 +235,12 @@ exports.createGuestTicket = async (req, res) => {
       priority = "medium",
       conversationHistory = [],
     } = req.body;
+    const Room = req.tenantModels
+      ? req.tenantModels.Room
+      : require("../models/Room");
+    const Ticket = req.tenantModels
+      ? req.tenantModels.Ticket
+      : require("../models/Ticket");
 
     if (!roomNumber || !guestInfo || !initialMessage) {
       return res.status(400).json({
